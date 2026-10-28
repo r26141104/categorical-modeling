@@ -1,0 +1,1080 @@
+---
+title: "Part 2：用 Skill 分析類別結果"
+subtitle: "Modeling Categorical Outcomes"
+number-sections: true
+toc-depth: 2
+---
+
+```{r}
+#| include: false
+source("_common.R")
+library(VGAM)
+
+# 內部註記（不顯示在頁面）：
+#   1 二元 logistic：模型 §4.1、推論 §4.2、類別型解釋變數 §4.3、多個解釋變數 §4.4、ROC §4.6（A）；
+#     GLM 的三個成分與 MLE §3.1、§3.5（A）；適合度 §5.2、完全分離 §5.3、樣本數 §5.1.1（A）
+#   2 baseline-category logit §6.1（A）
+#   3 累積 logit §6.2（A）、比例勝算檢查 §6.3.2（A/B）
+#   Skill：Part 2 專屬的 categorical-modeling（另存於「俊逸skill」資料夾），架構參考同學已報告過的 Skill
+#   實測輸出：demo/part2/skill/qN/result.json（第一次）、demo/part2/skill/round2/（第二次：compare、report）；驗證：demo/part2/verify_results.json
+#   模型比較：§4.3（數值分數 vs 類別）、§5.1（AIC）、§5.2（巢狀模型的 LR 檢定）（A）
+
+.blank <- function(x) is.null(x) || length(x) == 0 || (length(x) == 1 && (is.na(x) || x == ""))
+.show <- function(x, empty = "（待填）") if (.blank(x)) empty else paste(unlist(x), collapse = ", ")
+.num <- function(x) if (abs(x) < 1e-3 && x != 0) formatC(x, digits = 3, format = "e") else formatC(x, digits = 4, format = "f")
+ptxt <- function(p) if (p < 0.001) "< 0.001" else paste("=", fmt_p(p))
+
+judg <- yaml::read_yaml("demo/part2/judgment.yml")
+q <- setNames(judg$questions, vapply(judg$questions, `[[`, "", "id"))
+v <- jsonlite::read_json("demo/part2/verify_results.json", simplifyVector = TRUE)
+ids <- c("q1", "q2", "q3")              # 第一次實測的三題；q1_compare 是第二次實測的追問
+sk <- lapply(ids, function(id) {
+  f <- file.path("demo/part2/skill", id, "result.json")
+  if (file.exists(f)) jsonlite::read_json(f, simplifyVector = TRUE) else NULL
+})
+names(sk) <- ids
+rd <- function(f) if (file.exists(f)) jsonlite::read_json(f, simplifyVector = TRUE) else NULL
+r2q1 <- rd("demo/part2/skill/round2/q1/result.json")          # 第二次實測（新版 Skill）
+r2c <- rd("demo/part2/skill/round2/q1_compare/result.json")
+skill_plot <- function(id, name) {
+  f <- file.path("demo/part2/skill", id, paste0(name, ".png"))
+  if (!is.null(sk[[id]]) && file.exists(f)) f else NULL
+}
+```
+
+::: {.callout-tip}
+## Goal
+結果變數是**類別**時，用**模型**同時描述多個解釋變數的效果。本頁先用課本例題快速介紹三個模型（兩類用**二元 logistic 迴歸**，三類以上沒有順序用 **baseline-category logit**，有順序用**累積 logit**；公式、檢定細節與 R code 都收在「點開查看」框裡），重點放在我為 Part 2 做的 **Skill**：它能做什麼、怎麼做出來、實測後怎麼改進，以及用真實資料實際操作的結果。
+:::
+
+# 二元 logistic 迴歸（Logistic Regression）
+
+## 資料與模型（Data and Model）
+
+**資料**：$n$ 個觀察值 $(x_i, Y_i)$，$i = 1, \dots, n$，結果 $Y_i \in \{0, 1\}$（1 = 成功）。
+
+**模型**：令 $\pi(x) = P(Y = 1 \mid x)$，
+
+$$
+\text{logit}[\pi(x)] = \log\frac{\pi(x)}{1-\pi(x)} = \alpha + \beta x,
+\qquad
+\pi(x) = \frac{e^{\alpha+\beta x}}{1+e^{\alpha+\beta x}} .
+$$
+
+**勝算比怎麼解釋？**
+
+- **勝算比**：$x$ 增加 1 單位，勝算乘以 $e^{\beta}$：
+$$
+\frac{\text{odds}(x+1)}{\text{odds}(x)} = \frac{e^{\alpha+\beta(x+1)}}{e^{\alpha+\beta x}} = e^{\beta}.
+$$
+- **機率尺度的變化**：曲線在 $x$ 的斜率是 $\beta\,\pi(x)[1-\pi(x)]$，在 $\pi(x) = 0.5$ 時最大，等於 $\beta/4$。
+- **中位有效水準**（median effective level）：$\pi(x) = 0.5$ 發生在 $x = -\alpha/\beta$。
+
+::: {.callout-warning}
+## 注意
+$e^{\beta}$ 是**勝算**的倍數，不是**機率**的倍數；只有 $\pi$ 很小時兩者才接近。
+:::
+
+```{r}
+#| include: false
+Crabs <- read.table("data/agresti/Crabs.dat", header = TRUE)
+fit <- glm(y ~ width, family = binomial, data = Crabs)
+fit0 <- glm(y ~ 1, family = binomial, data = Crabs)
+cf <- summary(fit)$coefficients
+a <- cf[1, 1]; b <- cf[2, 1]; se_b <- cf[2, 2]
+z <- b / se_b
+LR <- fit0$deviance - fit$deviance
+p21 <- plogis(a + b * 21); p335 <- plogis(a + b * 33.5); xbar <- mean(Crabs$width)
+pbar <- plogis(a + b * xbar)
+ci_w <- b + c(-1, 1) * qnorm(0.975) * se_b
+```
+
+::::: {.callout-note collapse="true"}
+## 細節：GLM、假設、估計、檢定統計量與決策規則（點開查看）
+
+logistic 迴歸是**廣義線性模型**（generalized linear model, GLM）的一種，由三個成分組成：
+
+| 成分 | logistic 迴歸 |
+|---|---|
+| 隨機成分（random component） | $Y_i \sim \text{Bernoulli}(\pi_i)$，彼此獨立 |
+| 系統成分（linear predictor） | $\eta_i = \alpha + \beta x_i$ |
+| 連結函數（link function） | $\eta_i = \text{logit}(\pi_i)$ |
+
+::: {.callout-note}
+**Note**
+logit 把 $(0, 1)$ 的機率對應到整條實數線，所以不論 $x$ 多大多小，$\pi(x)$ 都落在 0 和 1 之間，畫出來是 S 形曲線。若改用一般線性迴歸 $\pi(x) = \alpha + \beta x$，預測機率可能超出 $[0, 1]$。
+:::
+
+**假設（Assumption）**
+
+1. 觀察值 $Y_1, \dots, Y_n$ 彼此**獨立**（同一個體有多筆資料時不成立，見 Part 3）。
+2. 給定 $x_i$，$Y_i$ 服從 Bernoulli 分配，成功機率為 $\pi(x_i)$。
+3. $\text{logit}[\pi(x)]$ 是 $x$ 的**線性**函數。
+4. 推論採**大樣本**近似：樣本數相對於參數個數要夠大，且資料沒有**完全分離**（見下方「模型檢查」）。
+
+**估計（Maximum Likelihood Estimation）**
+
+概似函數與對數概似函數：
+
+$$
+L(\alpha, \beta) = \prod_{i=1}^{n} \pi(x_i)^{y_i}\,[1-\pi(x_i)]^{1-y_i},
+\qquad
+\ell(\alpha, \beta) = \sum_{i=1}^{n}\Big[\, y_i(\alpha+\beta x_i) - \log\big(1+e^{\alpha+\beta x_i}\big) \Big].
+$$
+
+令偏微分為 0，得到**概似方程式**（likelihood equations）：
+
+$$
+\sum_{i=1}^{n}\big(y_i - \pi(x_i)\big) = 0, \qquad \sum_{i=1}^{n} x_i\big(y_i - \pi(x_i)\big) = 0 .
+$$
+
+方程式沒有封閉解，以 **Newton–Raphson**（Fisher scoring，即 R 的 IRLS）迭代求解。估計量的變異數由**訊息矩陣**（information matrix）的反矩陣估計，$\widehat{\text{Var}}(\hat\beta)$ 開根號就是 $SE(\hat\beta)$。
+
+**假設檢定（Hypothesis）**
+
+檢定 $x$ 對 $Y$ 有沒有影響：
+
+- 虛無假設：$H_0: \beta = 0$（$\pi(x)$ 不隨 $x$ 改變，$Y$ 和 $x$ 獨立）
+- 對立假設（擇一）：右尾 $H_1: \beta > 0$、左尾 $H_2: \beta < 0$、雙尾 $H_3: \beta \neq 0$
+
+**檢定統計量（Test Statistics）**
+
+三種檢定都以 $\hat\beta$ 的大樣本常態性為基礎：
+
+| 檢定 | 統計量 | $H_0$ 下的分配 |
+|---|---|---|
+| Wald 檢定 | $z = \hat\beta / SE(\hat\beta)$，或 $z^2$ | $N(0,1)$；$z^2 \sim \chi^2_1$ |
+| 概似比檢定（likelihood-ratio） | $LR = -2(\ell_0 - \ell_1) = D_0 - D_1$ | $\chi^2_1$ |
+| Score 檢定 | 以 $H_0$ 下的斜率（score）標準化 | $\chi^2_1$ |
+
+其中 $\ell_0$、$\ell_1$ 是虛無模型（只有截距）與完整模型的最大對數概似，$D_0$、$D_1$ 是兩個模型的 **deviance**。
+
+::: {.callout-note}
+**Note**
+大樣本時三者結果相近。樣本不大或效果很強時 Wald 檢定較不可靠，教科書建議優先使用**概似比檢定**與 **profile likelihood 信賴區間**（把 LR 檢定反轉得到的區間）。
+:::
+
+**決策規則（Decision）**
+
+顯著水準 $\alpha$ 下：
+
+| 對立假設 | Wald 檢定：拒絕 $H_0$ 若 | 概似比檢定：拒絕 $H_0$ 若 |
+|---|---|---|
+| 右尾 $H_1: \beta > 0$ | $z \geq z_\alpha$ | — |
+| 左尾 $H_2: \beta < 0$ | $z \leq -z_\alpha$ | — |
+| 雙尾 $H_3: \beta \neq 0$ | $\lvert z \rvert \geq z_{\alpha/2}$ | $LR \geq \chi^2_{1,\alpha}$ |
+
+**信賴區間**：Wald 區間 $\hat\beta \pm z_{\alpha/2}\,SE(\hat\beta)$，取指數得勝算比區間 $\big(e^{\hat\beta - z_{\alpha/2}SE},\; e^{\hat\beta + z_{\alpha/2}SE}\big)$。勝算比區間**不包含 1** 等價於在雙尾檢定拒絕 $H_0$。
+
+例題中勝算比的 95% Wald 區間為 $(`r fmt_num(exp(ci_w[1]), 2)`, `r fmt_num(exp(ci_w[2]), 2)`)$，不包含 1。
+
+:::::
+
+## 課本例題（Worked Example）
+
+馬蹄蟹（horseshoe crab）資料：173 隻雌蟹，$Y$ = 身邊是否有衛星雄蟹（1 有、0 沒有），$x$ = 背甲寬度（cm）。
+
+
+**步驟 1：估計模型。** 以最大概似法得到
+
+$$
+\text{logit}[\hat\pi(x)] = `r fmt_num(a, 3)` + `r fmt_num(b, 3)`\,x, \qquad SE(\hat\beta) = `r fmt_num(se_b, 3)` .
+$$
+
+**步驟 2：解釋。**
+
+- 勝算比：$e^{\hat\beta} = e^{`r fmt_num(b, 3)`} = `r fmt_num(exp(b), 3)`$，寬度每增加 1 cm，有衛星雄蟹的勝算乘以 `r fmt_num(exp(b), 2)`
+- 預測機率：$\hat\pi(21) = `r fmt_num(p21, 3)`$；平均寬度 $\bar x = `r fmt_num(xbar, 1)`$ 時 $\hat\pi = `r fmt_num(pbar, 3)`$；$\hat\pi(33.5) = `r fmt_num(p335, 3)`$
+- 平均寬度處的斜率：$\hat\beta\hat\pi(1-\hat\pi) = `r fmt_num(b, 3)` \times `r fmt_num(pbar, 3)` \times `r fmt_num(1 - pbar, 3)` = `r fmt_num(b * pbar * (1 - pbar), 3)`$，寬度每多 1 cm，機率約增加 `r fmt_num(b * pbar * (1 - pbar), 3)`
+- 中位有效水準：$-\hat\alpha/\hat\beta = `r fmt_num(-a / b, 1)`$ cm
+
+**步驟 3：檢定 $H_0: \beta = 0$。**
+
+- Wald：$z = `r fmt_num(b, 3)` / `r fmt_num(se_b, 3)` = `r fmt_num(z, 2)`$，$z^2 = `r fmt_num(z^2, 1)`$
+- 概似比：$LR = D_0 - D_1 = `r fmt_num(fit0$deviance, 1)` - `r fmt_num(fit$deviance, 1)` = `r fmt_num(LR, 1)`$，自由度 1
+
+兩者都遠大於 $\chi^2_{1, 0.05} = `r fmt_num(qchisq(0.95, 1), 2)`$，拒絕 $H_0$：寬度和有沒有衛星雄蟹有關。
+
+```{r}
+#| echo: false
+#| fig-height: 3.2
+#| fig-cap: "點：每隻雌蟹（上下稍微錯開）；曲線：模型預測的機率"
+grid <- data.frame(width = seq(min(Crabs$width), max(Crabs$width), length.out = 200))
+grid$p <- predict(fit, grid, type = "response")
+ggplot2::ggplot(Crabs, ggplot2::aes(width, y)) +
+  ggplot2::geom_jitter(height = 0.04, width = 0, alpha = 0.35, colour = "#1f3a5f") +
+  ggplot2::geom_line(data = grid, ggplot2::aes(width, p), colour = "#b2182b", linewidth = 1.1) +
+  ggplot2::scale_y_continuous(labels = scales::percent) +
+  ggplot2::labs(x = "背甲寬度（cm）", y = "有衛星雄蟹的機率")
+```
+
+::::: {.callout-note collapse="true"}
+## R code — logistic 迴歸（點開查看）
+
+```{r}
+Crabs <- read.table("data/agresti/Crabs.dat", header = TRUE)
+fit <- glm(y ~ width, family = binomial, data = Crabs)
+summary(fit)                          # 估計值、SE、Wald 檢定、deviance
+```
+
+```{r}
+exp(coef(fit))                        # 勝算比
+confint(fit)                          # profile likelihood 信賴區間（β）
+exp(confint(fit))                     # 勝算比的信賴區間
+anova(fit, test = "LRT")              # 概似比檢定（D0 − D1）
+predict(fit, data.frame(width = c(21, 26.3, 33.5)), type = "response")   # 預測機率
+```
+
+::: {.callout-note}
+**Note**
+`summary()` 印出的 `z value` 與 `Pr(>|z|)` 是 **Wald 檢定**；`Null deviance` 減 `Residual deviance` 就是 **LR 統計量**。`confint()` 給的是 profile likelihood 區間，`confint.default()` 才是 Wald 區間 $\hat\beta \pm z_{\alpha/2} SE$。
+:::
+
+:::::
+
+## 多個解釋變數（Multiple Logistic Regression）
+
+**模型**：
+
+$$
+\text{logit}[\pi(\mathbf{x})] = \alpha + \beta_1 x_1 + \cdots + \beta_p x_p .
+$$
+
+- $e^{\beta_j}$ 是**其他變數固定**時，$x_j$ 增加 1 的勝算比。
+- 有 $c$ 類的**類別型解釋變數**用 $c-1$ 個指標變數（indicator variables）表示，係數是「該類 vs 參考類」的對數勝算比。
+- **檢定一個變數的整體效果**：$H_0$：它的所有係數都是 0。用 LR 檢定比較有、沒有這個變數的兩個模型，自由度 = 少掉的參數個數；拒絕 $H_0$ 若 $LR \geq \chi^2_{df,\alpha}$。
+
+**例題**：加入雌蟹顏色（1 淺 – 4 深，當類別變數）。
+
+::::: {.callout-note collapse="true"}
+## 例題：加入顏色（點開查看）
+
+```{r}
+fit2 <- glm(y ~ width + factor(color), family = binomial, data = Crabs)
+summary(fit2)$coefficients
+car::Anova(fit2)                      # 每個變數的 LR 檢定（Type II）
+```
+
+```{r}
+#| include: false
+lr2 <- car::Anova(fit2)
+```
+
+- 同樣顏色時，寬度每多 1 cm，勝算乘以 $e^{`r fmt_num(coef(fit2)[["width"]], 3)`} = `r fmt_num(exp(coef(fit2)[["width"]]), 2)`$
+- 顏色 4 相對顏色 1 的勝算比 $= `r fmt_num(exp(coef(fit2)[["factor(color)4"]]), 2)`$
+- 顏色的整體 LR 檢定：$LR = `r fmt_num(lr2["factor(color)", "LR Chisq"], 2)`$，$df = 3$，$P `r ptxt(lr2["factor(color)", "Pr(>Chisq)"])`$；$\chi^2_{3,0.05} = `r fmt_num(qchisq(0.95, 3), 2)`$，在 $\alpha = 0.05$ 下**不拒絕** $H_0$
+
+:::::
+
+::: {.callout-note}
+## Note
+有順序的類別（例如顏色 1–4）也可以當**數值分數**放入模型，只用 1 個參數，但假設每差一級效果相同。當類別變數則不做此假設、但多用參數。兩種做法可用 LR 檢定比較。
+:::
+
+::::: {.callout-note collapse="true"}
+## 模型檢查：適合度、ROC、完全分離、樣本數（點開查看）
+
+**(1) 適合度（goodness of fit）**。解釋變數都是類別、資料可以分組時，用 deviance 或 Pearson 統計量
+
+$$
+G^2 = 2\sum \text{observed} \log\frac{\text{observed}}{\text{fitted}}, \qquad X^2 = \sum \frac{(\text{observed}-\text{fitted})^2}{\text{fitted}}
+$$
+
+與 $\chi^2_{df}$ 比較，$df$ = 組數 − 參數個數。有**連續**解釋變數時（如寬度），每組幾乎只有一個觀察值，$G^2$ 沒有卡方分配，**不能**當適合度檢定，應改和更複雜的模型（例如加入二次項或交互作用）做 LR 比較。
+
+**(2) 預測能力：ROC 曲線**。以預測機率 $\hat\pi_i$ 對所有切點畫出敏感度對 1 − 特異度。**曲線下面積**（AUC）又稱 **concordance index**：隨機取一個 $y = 1$ 和一個 $y = 0$ 的觀察值，模型給前者較高預測機率的機率。0.5 = 亂猜，1 = 完美區分。
+
+```{r}
+library(pROC)
+c(只用寬度 = auc(roc(Crabs$y, fitted(fit), quiet = TRUE)),
+  寬度加顏色 = auc(roc(Crabs$y, fitted(fit2), quiet = TRUE)))
+```
+
+**(3) 完全分離（complete separation）**。若某個 $x$ 值以下全是 0、以上全是 1，概似函數沒有最大值，$\hat\beta = \infty$：
+
+```{r}
+toy <- data.frame(x = 1:6, y = c(0, 0, 0, 1, 1, 1))
+summary(glm(y ~ x, family = binomial, data = toy))$coefficients
+```
+
+軟體印出的係數與 SE 都大得離譜，Wald 檢定沒有意義。此時應看 LR 檢定與 profile likelihood 區間（下限有限、上限無限大）。
+
+**(4) 樣本數**。經驗法則：較少的那一類結果，每個參數至少約 **10 個**觀察值，否則估計可能有偏誤、SE 不準。
+
+:::::
+
+# Baseline-Category Logit 模型（名目結果）
+
+## 資料與模型（Data and Model）
+
+**資料**：結果 $Y$ 有 $J$ 個**沒有順序**的類別，$\pi_j(x) = P(Y = j \mid x)$，$\sum_j \pi_j(x) = 1$。
+
+**模型**：選第 $J$ 類為**基準類別**（baseline），其他每一類各和它配對成一條 logit：
+
+$$
+\log\frac{\pi_j(x)}{\pi_J(x)} = \alpha_j + \beta_j x, \qquad j = 1, \dots, J-1 .
+$$
+
+任兩類的比較可由方程式相減得到，例如 $\log(\pi_a/\pi_b) = (\alpha_a - \alpha_b) + (\beta_a - \beta_b)x$。各類機率：
+
+$$
+\pi_j(x) = \frac{e^{\alpha_j+\beta_j x}}{1 + \sum_{h=1}^{J-1} e^{\alpha_h+\beta_h x}}, \qquad \pi_J(x) = \frac{1}{1 + \sum_{h=1}^{J-1} e^{\alpha_h+\beta_h x}} .
+$$
+
+::::: {.callout-note collapse="true"}
+## 細節：假設、檢定統計量與決策規則（點開查看）
+
+**假設（Assumption）**
+
+1. 觀察值彼此獨立；給定 $x$，$Y$ 服從多項分配（multinomial）。
+2. 每條方程式的 logit 是 $x$ 的線性函數。
+3. 結果類別**沒有順序**（有順序時改用第 3 節的模型，才能利用順序資訊）。
+
+::: {.callout-note}
+**Note**
+基準類別的選擇**不影響**模型的配適與預測機率，只改變係數是「和誰比」。
+:::
+
+**假設檢定與統計量（Hypothesis and Test Statistic）**
+
+- $H_0: \beta_1 = \beta_2 = \cdots = \beta_{J-1} = 0$（$x$ 對 $Y$ 的分布沒有影響）
+- $H_1$：至少一個 $\beta_j \neq 0$
+
+**LR 統計量**：$LR = -2(\ell_0 - \ell_1)$，$H_0$ 下近似 $\chi^2_{J-1}$（一個解釋變數在每條方程式各有一個係數）。個別係數 $\beta_j$ 可用 Wald $z = \hat\beta_j / SE(\hat\beta_j)$ 檢定。
+
+**決策規則（Decision）**
+
+| 檢定目標 | 統計量 | 拒絕 $H_0$ 若 |
+|---|---|---|
+| $x$ 的整體效果 $H_0: \beta_1 = \cdots = \beta_{J-1} = 0$ | $LR$ | $LR \geq \chi^2_{J-1,\alpha}$ |
+| 單一方程式 $H_0: \beta_j = 0$（雙尾） | Wald $z$ | $\lvert z \rvert \geq z_{\alpha/2}$ |
+
+:::::
+
+## 課本例題（Worked Example）
+
+佛州 59 隻鱷魚的主食：魚（F）、無脊椎動物（I）、其他（O），$x$ = 體長（公尺）。以 O 為基準類別。
+
+```{r}
+#| include: false
+Gators <- read.table("data/agresti/Alligators.dat", header = TRUE)
+fit3 <- vglm(y ~ x, family = multinomial(refLevel = "O"), data = Gators)
+fit3_0 <- vglm(y ~ 1, family = multinomial(refLevel = "O"), data = Gators)
+c3 <- coef(fit3)
+LR3 <- deviance(fit3_0) - deviance(fit3)
+```
+
+**步驟 1：估計。**
+
+$$
+\log\frac{\hat\pi_F}{\hat\pi_O} = `r fmt_num(c3[["(Intercept):1"]], 3)` `r ifelse(c3[["x:1"]] < 0, "-", "+")` `r fmt_num(abs(c3[["x:1"]]), 3)`\,x,
+\qquad
+\log\frac{\hat\pi_I}{\hat\pi_O} = `r fmt_num(c3[["(Intercept):2"]], 3)` `r ifelse(c3[["x:2"]] < 0, "-", "+")` `r fmt_num(abs(c3[["x:2"]]), 3)`\,x .
+$$
+
+**步驟 2：解釋。**
+
+- 體長每多 1 公尺，「無脊椎 vs 其他」的勝算乘以 $e^{`r fmt_num(c3[["x:2"]], 3)`} = `r fmt_num(exp(c3[["x:2"]]), 3)`$：越大的鱷魚越少吃無脊椎動物
+- 「魚 vs 無脊椎」由相減得到：$\hat\beta_F - \hat\beta_I = `r fmt_num(c3[["x:1"]], 3)` - (`r fmt_num(c3[["x:2"]], 3)`) = `r fmt_num(c3[["x:1"]] - c3[["x:2"]], 3)`$，勝算比 $`r fmt_num(exp(c3[["x:1"]] - c3[["x:2"]]), 2)`$
+
+**步驟 3：檢定 $H_0: \beta_F = \beta_I = 0$。** $LR = `r fmt_num(LR3, 2)`$，$df = 2$，$\chi^2_{2,0.05} = `r fmt_num(qchisq(0.95, 2), 2)`$，拒絕 $H_0$：體長和主食有關（$P `r ptxt(pchisq(LR3, 2, lower.tail = FALSE))`$）。
+
+```{r}
+#| echo: false
+#| fig-height: 3.2
+g <- data.frame(x = seq(min(Gators$x), max(Gators$x), length.out = 100))
+pr <- predict(fit3, g, type = "response")
+long <- data.frame(x = rep(g$x, 3), food = rep(c("魚 F", "無脊椎 I", "其他 O"), each = nrow(g)),
+                   p = c(pr[, "F"], pr[, "I"], pr[, "O"]))
+ggplot2::ggplot(long, ggplot2::aes(x, p, colour = food)) +
+  ggplot2::geom_line(linewidth = 1.1) +
+  ggplot2::scale_y_continuous(labels = scales::percent, limits = c(0, 1)) +
+  ggplot2::scale_colour_manual(values = c("魚 F" = "#1f3a5f", "無脊椎 I" = "#e07b39", "其他 O" = "#7a7a7a")) +
+  ggplot2::labs(x = "體長（公尺）", y = "預測機率", colour = "主食")
+```
+
+::::: {.callout-note collapse="true"}
+## R code — baseline-category logit（點開查看）
+
+```{r}
+library(VGAM)
+Gators <- read.table("data/agresti/Alligators.dat", header = TRUE)
+fit3 <- vglm(y ~ x, family = multinomial(refLevel = "O"), data = Gators)   # 基準類別 = O
+coef(summary(fit3))                   # :1 = F vs O，:2 = I vs O
+fit3_0 <- vglm(y ~ 1, family = multinomial(refLevel = "O"), data = Gators)
+deviance(fit3_0) - deviance(fit3)     # LR 統計量，df = 2
+```
+
+:::::
+
+# 累積 Logit 模型（有序結果）
+
+## 資料與模型（Data and Model）
+
+**資料**：結果 $Y$ 有 $J$ 個**有順序**的類別 $1 < 2 < \cdots < J$。
+
+**累積機率**：$P(Y \leq j \mid x) = \pi_1(x) + \cdots + \pi_j(x)$，$j = 1, \dots, J-1$。
+
+**模型**（比例勝算模型，proportional odds model）：
+
+$$
+\text{logit}\,P(Y \leq j \mid x) = \alpha_j + \beta x, \qquad j = 1, \dots, J-1 .
+$$
+
+每個切點有自己的截距 $\alpha_1 < \alpha_2 < \cdots < \alpha_{J-1}$，但**共用同一個斜率** $\beta$。
+
+- $x$ 增加 1，任何切點的累積勝算 $\dfrac{P(Y\le j)}{P(Y>j)}$ 都乘以 $e^{\beta}$。
+- 換成「落在**較高**類別」的方向，勝算乘以 $e^{-\beta}$。
+
+::: {.callout-note}
+## Note
+有些軟體寫成 $\text{logit}\,P(Y \le j) = \alpha_j - \beta x$（例如 `MASS::polr`），此時 $\beta > 0$ 代表傾向較高類別。解釋係數前要先確認軟體的參數化；本頁用 `VGAM::vglm`，是 $\alpha_j + \beta x$。
+:::
+
+::::: {.callout-note collapse="true"}
+## 細節：假設、檢定統計量與決策規則（點開查看）
+
+**假設（Assumption）**
+
+1. 觀察值彼此獨立；給定 $x$，$Y$ 服從多項分配。
+2. 結果類別有自然的順序。
+3. **比例勝算假設**：$x$ 對每一個累積 logit 的效果 $\beta$ 都相同。
+
+**假設檢定與統計量（Hypothesis and Test Statistic）**
+
+- $H_0: \beta = 0$（$x$ 和 $Y$ 獨立）；$H_1: \beta \neq 0$
+- **LR 統計量** $LR = -2(\ell_0 - \ell_1)$，$H_0$ 下近似 $\chi^2_1$（每個解釋變數只有一個參數，比 baseline-category logit 的 $J-1$ 個更精簡，檢定力也較高）。
+
+**決策規則（Decision）**
+
+| 對立假設 | 統計量 | 拒絕 $H_0$ 若 |
+|---|---|---|
+| 雙尾 $H_1: \beta \neq 0$ | $LR$ | $LR \geq \chi^2_{1,\alpha}$ |
+| 雙尾 $H_1: \beta \neq 0$ | Wald $z = \hat\beta/SE$ | $\lvert z \rvert \geq z_{\alpha/2}$ |
+| 右尾（傾向較低類別）$H_1: \beta > 0$ | Wald $z$ | $z \geq z_\alpha$ |
+| 左尾（傾向較高類別）$H_1: \beta < 0$ | Wald $z$ | $z \leq -z_\alpha$ |
+
+:::::
+
+## 課本例題（Worked Example）
+
+美國民眾的政治意識形態：1 非常自由、2 有點自由、3 中間、4 有點保守、5 非常保守；解釋變數為政黨（民主黨、共和黨）與性別。
+
+```{r}
+#| include: false
+Pol <- read.table("data/agresti/Polviews.dat", header = TRUE)
+fit4 <- vglm(cbind(y1, y2, y3, y4, y5) ~ party + gender, family = cumulative(parallel = TRUE), data = Pol)
+fit4_p <- vglm(cbind(y1, y2, y3, y4, y5) ~ gender, family = cumulative(parallel = TRUE), data = Pol)
+fit4_g <- vglm(cbind(y1, y2, y3, y4, y5) ~ party, family = cumulative(parallel = TRUE), data = Pol)
+fit4_np <- vglm(cbind(y1, y2, y3, y4, y5) ~ party + gender, family = cumulative(parallel = FALSE), data = Pol)
+c4 <- coef(fit4)
+LR_party <- deviance(fit4_p) - deviance(fit4)
+LR_gender <- deviance(fit4_g) - deviance(fit4)
+LR_po <- deviance(fit4) - deviance(fit4_np); df_po <- df.residual(fit4) - df.residual(fit4_np)
+```
+
+**步驟 1：估計。** $\hat\beta_{\text{共和黨}} = `r fmt_num(c4[["partyrepub"]], 3)`$，$\hat\beta_{\text{男性}} = `r fmt_num(c4[["gendermale"]], 3)`$。
+
+**步驟 2：解釋。** 控制性別後，共和黨落在**較保守**類別的勝算是民主黨的 $e^{`r fmt_num(-c4[["partyrepub"]], 3)`} = `r fmt_num(exp(-c4[["partyrepub"]]), 1)`$ 倍，而且這個倍數對每一個切點都相同。
+
+**步驟 3：檢定。**
+
+- 政黨：$LR = `r fmt_num(LR_party, 1)`$，$df = 1$，遠大於 $\chi^2_{1,0.05} = `r fmt_num(qchisq(0.95, 1), 2)`$，拒絕 $H_0$
+- 性別：$LR = `r fmt_num(LR_gender, 2)`$，$P `r ptxt(pchisq(LR_gender, 1, lower.tail = FALSE))`$，不拒絕 $H_0$
+
+```{r}
+#| echo: false
+#| fig-height: 3
+pr4 <- predict(fit4, data.frame(party = c("dem", "repub"), gender = "female"), type = "response")
+lab <- c("非常自由", "有點自由", "中間", "有點保守", "非常保守")
+long4 <- data.frame(party = rep(c("民主黨", "共和黨"), 5), cat = factor(rep(lab, each = 2), levels = rev(lab)),
+                    p = as.vector(pr4))
+ggplot2::ggplot(long4, ggplot2::aes(party, p, fill = cat)) +
+  ggplot2::geom_col(width = 0.6, colour = "white") +
+  ggplot2::geom_text(ggplot2::aes(label = ifelse(p >= 0.05, scales::percent(p, 1), "")),
+                     position = ggplot2::position_stack(vjust = 0.5), size = 3.8) +
+  ggplot2::scale_fill_manual(values = rev(c("#08306b", "#2171b5", "#bdbdbd", "#ef6548", "#990000")), breaks = lab) +
+  ggplot2::scale_y_continuous(labels = scales::percent) +
+  ggplot2::coord_flip() +
+  ggplot2::labs(x = NULL, y = "預測機率（女性）", fill = NULL)
+```
+
+::::: {.callout-note collapse="true"}
+## R code — 累積 logit（點開查看）
+
+```{r}
+Pol <- read.table("data/agresti/Polviews.dat", header = TRUE)
+Pol                                   # y1 非常自由 … y5 非常保守（彙整次數）
+fit4 <- vglm(cbind(y1, y2, y3, y4, y5) ~ party + gender,
+             family = cumulative(parallel = TRUE), data = Pol)   # parallel = TRUE：比例勝算
+coef(summary(fit4))
+exp(-coef(fit4)[c("partyrepub", "gendermale")])                # 落在較高類別的勝算比
+```
+
+:::::
+
+## 比例勝算假設的檢查（Checking Proportional Odds）
+
+比較比例勝算模型（$\beta$ 共用）與每個切點各有 $\beta_j$ 的一般模型：
+
+- $H_0$：比例勝算成立（$\beta_1 = \cdots = \beta_{J-1}$）
+- $LR = -2(\ell_{\text{PO}} - \ell_{\text{general}})$，$df = (J-2) \times p$（$p$ = 解釋變數的參數個數）
+
+::::: {.callout-note collapse="true"}
+## R code — 比例勝算假設檢定（點開查看）
+
+```{r}
+fit4_np <- vglm(cbind(y1, y2, y3, y4, y5) ~ party + gender,
+                family = cumulative(parallel = FALSE), data = Pol)
+LR_po <- deviance(fit4) - deviance(fit4_np)
+df_po <- df.residual(fit4) - df.residual(fit4_np)
+c(LR = LR_po, df = df_po, P = pchisq(LR_po, df_po, lower.tail = FALSE))
+```
+
+:::::
+
+例題中 $LR = `r fmt_num(LR_po, 2)`$，$df = `r df_po`$，$P `r ptxt(pchisq(LR_po, df_po, lower.tail = FALSE))`$，不拒絕 $H_0$，比例勝算模型適用。
+
+::: {.callout-warning}
+## 注意
+- 假設被拒絕時，單一勝算比可能過度簡化（例如某一組只是分布較分散，而不是整體往上移），應分開描述各切點的效果。
+- **不要**把有序結果壓成兩類再做二元 logistic：會損失資訊，結論還會隨切點改變。
+:::
+
+# 怎麼選模型？
+
+| 結果變數 | 模型 | 一個解釋變數的參數個數 | 整體效果的 LR 檢定自由度 |
+|---|---|---|---|
+| 兩類 | 二元 logistic 迴歸 | 1 | 1 |
+| $J$ 類，沒有順序 | baseline-category logit | $J-1$ | $J-1$ |
+| $J$ 類，有順序 | 累積 logit（比例勝算） | 1 | 1 |
+| 同一個體有多筆資料 | 以上模型都不適用 → Part 3 | | |
+
+# Skill 介紹：categorical-modeling
+
+## 這個 Skill 做什麼？
+
+**categorical-modeling** 是我為 Part 2 做的 Claude Skill，專門處理**結果變數是類別**的迴歸模型。使用者丟入資料檔，用平常說話的方式問「哪些因素會影響……？」，Skill 會：
+
+```{mermaid}
+flowchart LR
+  A[描述資料<br/>＋確認清單] --> B{使用者回覆}
+  B -->|先畫圖| P[畫圖<br/>印出實際比例]
+  P --> B
+  B -->|照預設／改設定| E[Python 配適模型<br/>run_model.py]
+  E --> F[白話解釋<br/>＋注意事項]
+  F -->|需要時| G[比較兩個模型]
+  F -->|需要時| H[產生 HTML 報告]
+  G --> H
+```
+
+| 使用者的問題 | Skill 用的方法 | 指令 |
+|---|---|---|
+| 結果兩類（及格／不及格） | 二元 logistic 迴歸 | `logistic` |
+| 結果三類以上、沒有順序（選校原因） | baseline-category logit | `multinomial` |
+| 結果三類以上、有順序（飲酒量 1–5） | 累積 logit（比例勝算模型） | `ordinal` |
+| 「這個變數當數值還是類別好？」「這個變數要不要放？」 | 比較兩個模型（概似比檢定、AIC） | `compare` |
+| 「幫我整理成報告」 | 把所有結果整理成一份 HTML 報告 | `report` |
+
+範圍外的問題（同一個體有多筆資料、結果是計數或連續數值），Skill 會說明原因和適合的方法，**不會硬套**。
+
+::: {.callout-important}
+## 行為規則（最優先）
+1. **未經使用者明確同意，不畫圖、不配適、不比較模型、不產生報告**
+2. 資料是否獨立**一定讓使用者確認**（資料本身看不出來）
+3. 每則訊息結尾都寫清楚「回覆什麼就會做什麼」
+4. **所有數字都由程式計算**，Claude 不能心算、修改數字，也不能從圖上估讀
+:::
+
+## 檔案結構（File Structure）
+
+Skill 採用**分層設計**：主檔精簡、永遠載入；知識放在 `references/`，需要時才讀；計算交給 `scripts/`。
+
+```text
+categorical-modeling/
+├── SKILL.md                    <- 主檔：行為規則與分析流程（大腦）
+├── references/
+│   ├── methods.md              <- 速查：三個模型＋模型比較的 H0、統計量、效果量
+│   ├── textbook-methods.md     <- 課本細節：假設、公式、注意事項
+│   └── decision-tree.md        <- 選模型的決策樹、配適後建議的比較
+├── scripts/
+│   └── run_model.py            <- 實際計算（statsmodels）＋畫圖＋比較模型＋產生報告
+├── data/                       <- 範例資料（馬蹄蟹、鱷魚、高中生）
+├── decision-tree.png           <- 決策樹圖
+├── README.md                   <- 安裝與使用說明
+└── skill-overview.qmd          <- Skill 介紹頁
+```
+
+| 檔案 | 用途 |
+|---|---|
+| `SKILL.md` | 定義 Skill 什麼時候啟動、涵蓋範圍、行為規則、六步驟流程、怎麼解釋每個模型的結果 |
+| `methods.md` | 一頁速查：模型式、$H_0$、統計量、勝算比怎麼解釋、對應的指令 |
+| `textbook-methods.md` | 最深的一層：完整假設、估計與推論、模型檢查、模型比較、常見誤解，附 Agresti 節號 |
+| `decision-tree.md` | 幫 Claude 決定用哪個模型、還要問使用者哪些設定、配適後建議做哪些比較 |
+| `run_model.py` | 被執行的程式（Python）：描述資料、畫圖、配適與比較模型、產生報告 |
+
+## 怎麼使用？
+
+把 Skill 資料夾壓成 `categorical-modeling.zip`，上傳到 Claude App 就能在網頁版、桌面版使用：
+
+1. **Settings → Capabilities**：開啟「程式碼執行與檔案建立」
+2. **Customize → Skills**：按 **＋** → **Create skill** → **Upload a skill**，上傳 ZIP
+3. 開一個新對話，上傳資料檔，用平常說話的方式提問
+
+> 用 categorical-modeling skill 分析這份資料：哪些因素會影響學生是否及格？
+
+## Skill 怎麼選模型？
+
+先確認資料**是否獨立**、結果變數**是什麼型態**，再依「幾類、有沒有順序」選模型，最後確認模型設定：
+
+![選模型的決策樹（decision-tree.png）](demo/part2/decision-tree.png){width=70%}
+
+## 一則訊息確認所有設定
+
+資料看不出來的事，Skill 不會自己猜，而是用**一則確認清單**一次列出所有設定，每項都附上建議的預設值和理由：
+
+| 編號 | 要確認的事 | 為什麼要問 |
+|---|---|---|
+| ① | 每一列是不是不同、獨立的個體？ | 資料本身證明不了獨立；不獨立就不能用這三個模型 |
+| ② | 結果有幾類？有沒有順序？ | 決定用哪一個模型 |
+| ③ | 數字代碼（例如 1–4）要當數值還是類別？ | 當數值只用 1 個參數、假設等距效果；當類別則每類各自估計 |
+| ④ | 類別型解釋變數的參考組 | 決定勝算比是「和誰比」 |
+| ⑤ | 「成功」是哪一類／基準類別 | 決定勝算比的方向；多類別模型的比較對象 |
+| ⑥ | 樣本數夠不夠？ | Skill 自己檢查：較少的一類，每個參數約 10 個以上 |
+
+使用者只要回覆「**照預設**」就開始計算；要改設定，只寫編號和新設定，例如「③ failures 改當類別」。
+
+```{r}
+#| echo: false
+#| results: asis
+f <- "demo/part2/skill/round2/screenshots/checklist.png"
+if (file.exists(f)) cat(sprintf("::: {.callout-note collapse=\"true\"}\n## 實際畫面：Skill 的確認清單（點開查看）\n![](%s){width=85%%}\n:::\n", f))
+```
+
+## 它會算出什麼、提醒什麼？
+
+| 指令 | 輸出 | 圖 |
+|---|---|---|
+| `logistic` | 勝算比與 profile 信賴區間、每個變數的概似比檢定、AUC、預測機率 | 預測機率曲線、ROC 曲線 |
+| `multinomial` | 每條方程式的勝算比、每個變數的概似比檢定、各類別預測機率 | 各類別預測機率 |
+| `ordinal` | 「落在較高類別」的勝算比、概似比檢定、**比例勝算假設檢定** | 各類別預測機率 |
+| `compare` | 兩個模型的對數概似、AIC；巢狀時加上概似比檢定與結論 | — |
+| `report` | 一份 HTML 報告：結論摘要、表格、圖、注意事項 | 放入所有圖 |
+
+| 警告代碼 | Skill 的提醒 |
+|---|---|
+| `SEPARATION` | 完全分離：係數其實是無限大，不要看 Wald 檢定，改看概似比檢定 |
+| `FEW_EVENTS` | 樣本相對參數太少，估計可能不穩定 |
+| `GOF_NOTE` | 有數值解釋變數時，deviance 不能當適合度檢定；建議用 `compare` 和更複雜的模型比較 |
+| `PO_VIOLATED` | 比例勝算假設不成立，一個勝算比可能過度簡化 |
+| `NOT_NESTED` | 兩個模型不是巢狀，不能做概似比檢定，只能比較 AIC |
+| `MISSING` | 排除了幾筆缺失資料，以及什麼情況下會造成偏誤 |
+
+## 比較兩個模型：數值還是類別？
+
+數字代碼（例如被當次數 0–3）可以當**數值分數**，也可以當**類別**：
+
+| | 當數值分數 | 當類別 |
+|---|---|---|
+| 參數個數 | 1 個 | 類別數 − 1 個（0–3 是 3 個） |
+| 假設 | 每增加一級，效果都相同（等距） | 不做等距假設，每一級各自估計 |
+| 解釋 | 「每多被當一次，勝算乘以 …」 | 「被當 1 次 vs 0 次、2 次 vs 0 次……」 |
+
+數值分數模型是類別模型的**特例**（巢狀），所以可以用**概似比檢定**比較：$H_0$ 是「較簡單的數值模型就夠了」。$P$ 小代表類別模型明顯較好，也就是等距假設不成立。Skill 在配適完會主動**建議**做這個比較，但要使用者同意才執行。
+
+## 產生分析報告
+
+分析做完，回覆「**產生報告**」，Skill 會先寫一段白話的結論摘要（只能用程式算出的數字），再用 `report` 指令把所有結果整理成一份 HTML 報告，可以下載、用瀏覽器打開或列印成 PDF。
+
+```{r}
+#| echo: false
+#| results: asis
+f <- "demo/part2/skill/round2/screenshots/report-top.png"
+if (file.exists(f)) cat(sprintf("::: {.callout-note collapse=\"true\"}\n## 實際畫面：Skill 產生的報告（點開查看）\n![](%s){width=85%%}\n:::\n", f))
+```
+
+```{r}
+#| include: false
+gat <- read.table("data/agresti/Alligators.dat", header = TRUE)
+gfit <- vglm(y ~ x, family = multinomial(refLevel = "O"), data = gat)
+gfit0 <- vglm(y ~ 1, family = multinomial(refLevel = "O"), data = gat)
+```
+
+::: {.callout-note}
+## 課本例題核對
+用 Skill 的程式跑課本例題，結果和課本一致：馬蹄蟹的寬度係數 `r fmt_num(b, 3)`、概似比 `r fmt_num(LR, 2)`；鱷魚「無脊椎 vs 其他」的體長係數 `r fmt_num(coef(gfit)[["x:2"]], 3)`、概似比 `r fmt_num(deviance(gfit0) - deviance(gfit), 2)`。
+:::
+
+# Skill 是怎麼做出來的？
+
+## 製作流程
+
+```{mermaid}
+flowchart LR
+  A[規劃範圍<br/>3 個模型] --> B[寫 SKILL.md<br/>行為規則與流程]
+  B --> C[寫 references<br/>速查・課本・決策樹]
+  C --> D[寫 run_model.py<br/>用課本例題測試]
+  D --> E[打包 ZIP<br/>上傳 Claude App]
+  E --> F[新對話實測<br/>和人為判斷、R 比對]
+  F -->|發現問題| B
+```
+
+- **範圍**：只處理 Part 2 的三個模型；範圍外（配對資料、計數、連續結果）寫明要怎麼回應，不硬套
+- **SKILL.md**：規則寫成「不要做什麼」比較有效，例如「未經同意不配適」，否則 Claude 很容易一次把所有事做完
+- **判斷例子不用實測題目**：`decision-tree.md` 的例子全用課本資料，避免先把答案寫進 Skill
+- **分工**：判斷「有沒有問題」交給程式（警告代碼），「怎麼解釋」交給 Claude
+
+## 實測後的改進
+
+做好 Skill 不等於能用。每次實測都會發現問題，修改後再測一次：
+
+| 實測發現的問題 | 原因 | 改進 |
+|---|---|---|
+| 完全分離的資料讓程式當掉 | 勝算比 $e^{\beta}$ 數值溢位 | 改用安全的指數函式，並發出 `SEPARATION` 警告 |
+| Skill 從長條圖「估讀」各組比例 | `plot` 只輸出圖檔，Claude 手上沒有數字 | `plot` 同時印出實際比例；`SKILL.md` 規定只能引用印出的數字 |
+| 一步一問，回覆次數太多 | 規則要求每一步都停下來 | 改成**一則確認清單**，附預設值，回「照預設」即可 |
+| 懷疑 failures 的等距假設不成立，卻沒辦法檢查 | 沒有比較模型的工具 | 新增 `compare` 指令（概似比檢定、AIC） |
+| 分析結果散在對話裡，不方便交給別人 | 沒有整理輸出的工具 | 新增 `report` 指令，產生 HTML 報告 |
+| 同一個選項給兩次（`--ref higher=no --ref sex=F`）只保留最後一個 | 程式讀取選項的方式 | 重複的選項全部合併；用同一個指令重跑，結果不變 |
+
+完整的製作過程（每個檔案怎麼寫、怎麼測試）見 `make-skill-tutorial.html`。
+
+# Skill 應用示範：真實資料實測
+
+::: {.callout-tip}
+## 情境
+649 位葡萄牙高中生的資料（和 Part 1 同一份）。用三個問題測試 Skill：結果兩類、結果有序、結果名目，各需要不同的模型。
+:::
+
+**第一次實測**：在 Claude App 上傳 Skill 後，開一個**新的對話**（看不到我們的判斷和驗證結果），上傳資料檔，像一般使用者一樣提問，例如：
+
+> 用 categorical-modeling skill 分析 student_por.csv：讀書時間、被當次數、想不想讀大學、性別，哪些會影響是否及格？
+
+```{r}
+#| echo: false
+#| results: asis
+shot <- list.files("demo/part2/skill/screenshots", pattern = "\\.png$", full.names = TRUE)
+if (length(shot) > 0) {
+  cat(sprintf("Skill 不會直接計算，**會先描述資料、跟你確認**：\n\n![Skill 的確認問題](%s)\n\n", shot[1]))
+}
+if (all(vapply(sk, is.null, logical(1)))) {
+  cat("::: {.callout-note}\n## 尚未實測\n完成 Skill 實測、把輸出放進 `demo/part2/skill/` 後，這一段會自動顯示結果與比對表。\n:::\n")
+}
+```
+
+```{r}
+#| include: false
+# ---- 讀取 Skill 輸出並整理成文字（數字都來自 Skill 的 result.json）----
+coef_row <- function(s, term, eq = NULL) {
+  cf <- s$coefficients; k <- sub(":[0-9]+$", "", cf$term) == term
+  if (!is.null(eq)) k <- k & cf$equation == eq
+  if (!any(k)) NULL else cf[which(k)[1], ]
+}
+lr_row <- function(s, var) { l <- s$lr_tests; if (any(l$variable == var)) l[l$variable == var, ][1, ] else NULL }
+or_txt <- function(r, col = "or") sprintf("%s（95%% CI %s – %s）", fmt_num(r[[col]], 2), fmt_num(r$or_lower, 2), fmt_num(r$or_upper, 2))
+model_name <- c(logistic = "二元 logistic 迴歸", multinomial = "baseline-category logit", ordinal = "累積 logit（比例勝算）")
+```
+
+## 哪些因素會影響是否及格？
+
+```{r}
+#| echo: false
+#| fig-height: 3
+f <- c(skill_plot("q1", "probability_curve"), skill_plot("q1", "roc")); if (length(f) > 0) knitr::include_graphics(f)
+```
+
+```{r}
+#| echo: false
+#| results: asis
+s <- sk$q1
+if (!is.null(s)) {
+  cat("- Skill 選的模型：**", model_name[[s$model]], "**（成功類別 = ", s$success, "）\n", sep = "")
+  for (vv in s$x) {
+    l <- lr_row(s, vv); r <- s$coefficients[grepl(paste0("^", vv), s$coefficients$term), ][1, ]
+    if (!is.null(l) && nrow(r)) cat(sprintf("- %s：勝算比 %s；概似比檢定 LR = %s，P %s\n", r$label, or_txt(r), fmt_num(l$lr, 2), ptxt(l$p)))
+  }
+  cat(sprintf("- 預測能力：AUC = %s\n", fmt_num(s$auc, 3)))
+}
+```
+
+## 男生和女生的週末飲酒量不同嗎？
+
+```{r}
+#| echo: false
+#| fig-height: 3
+f <- skill_plot("q2", "category_probabilities"); if (!is.null(f)) knitr::include_graphics(f)
+```
+
+```{r}
+#| echo: false
+#| results: asis
+s <- sk$q2
+if (!is.null(s)) {
+  cat("- Skill 選的模型：**", model_name[[s$model]], "**（順序 ", paste(s$levels, collapse = " < "), "）\n", sep = "")
+  r <- s$coefficients[1, ]; l <- s$lr_tests[1, ]
+  cat(sprintf("- %s：落在較高飲酒量類別的勝算比 %s；LR = %s，P %s\n", r$label, or_txt(r, "or_higher"), fmt_num(l$lr, 2), ptxt(l$p)))
+  if (!is.null(s$proportional_odds)) cat(sprintf("- 比例勝算假設檢定：LR = %s，df = %d，P %s\n",
+    fmt_num(s$proportional_odds$lr, 2), as.integer(s$proportional_odds$df), ptxt(s$proportional_odds$p)))
+  w <- s$warnings
+  if (length(w) > 0 && "PO_VIOLATED" %in% w$code) cat("- ⚠️ Skill 的提醒：", w$message[w$code == "PO_VIOLATED"], "\n", sep = "")
+}
+```
+
+## 居住地和學校，跟選校原因有關嗎？
+
+```{r}
+#| echo: false
+#| fig-height: 3
+f <- skill_plot("q3", "category_probabilities"); if (!is.null(f)) knitr::include_graphics(f)
+```
+
+```{r}
+#| echo: false
+#| results: asis
+s <- sk$q3
+if (!is.null(s)) {
+  cat("- Skill 選的模型：**", model_name[[s$model]], "**（基準類別 = ", s$baseline, "）\n", sep = "")
+  cat(sprintf("- 整體檢定：LR = %s，df = %d，P %s\n", fmt_num(s$overall$lr, 2), as.integer(s$overall$df), ptxt(s$overall$p)))
+  for (i in seq_len(nrow(s$lr_tests))) with(s$lr_tests[i, ], cat(sprintf("- %s 的概似比檢定：LR = %s，df = %d，P %s\n", variable, fmt_num(lr, 2), as.integer(df), ptxt(p))))
+}
+```
+
+## 追問：被當次數要當數值還是類別？
+
+第一次實測時，Skill 在第 1 題就提醒：被當次數（failures）的效果集中在「0 次 → 1 次」，當數值分數時的等距假設**可能不成立**。但當時 Skill 沒有工具可以檢查。
+
+加入 `compare` 指令後，我在**另一個新對話**重新實測第 1 題（設定和第一次相同），再追問：
+
+> 好，比較 failures 當數值和當類別。
+
+```{r}
+#| echo: false
+#| results: asis
+if (!is.null(r2c)) {
+  m <- r2c$models
+  is_num <- vapply(m$numeric, function(z) "failures" %in% z, logical(1))
+  tb <- data.frame(
+    模型 = paste0("模型 ", m$name, ifelse(is_num, "：failures 當數值", "：failures 當類別")),
+    參數個數 = m$n_params,
+    對數概似 = fmt_num(m$loglik, 2),
+    AIC = fmt_num(m$aic, 2), check.names = FALSE)
+  print(knitr::kable(tb, row.names = FALSE))
+  t <- r2c$lr_test
+  cat(sprintf("\n\n- 概似比檢定：$LR = %s$，$df = %d$，$P %s$\n", fmt_num(t$lr, 2), as.integer(t$df), ptxt(t$p)))
+  cat(sprintf("- AIC 較小的是模型 %s\n", r2c$best_aic))
+  cat(sprintf("- Skill 的結論：%s\n", r2c$verdict))
+}
+```
+
+```{r}
+#| echo: false
+#| results: asis
+h <- q$q1_compare$judgment
+if (!is.null(h) && !is.null(r2c)) {
+  skill_choice <- if (r2c$lr_test$p < 0.05) "categorical" else "numeric"
+  zh <- c(numeric = "當數值", categorical = "當類別")
+  cat("::: {.callout-note}\n## 我們的判斷 vs 資料的檢定結果\n")
+  cat(sprintf("- **實測前我們的判斷**：%s。理由：%s\n", zh[[h$choice]], h$reason))
+  cat(sprintf("- **Skill 用資料檢定的結果**：%s比較好（$P %s$）\n", zh[[skill_choice]], ptxt(r2c$lr_test$p)))
+  if (h$choice == skill_choice) {
+    cat("- 兩者一致。\n")
+  } else {
+    cat("- 兩者**不一致**：等距假設看起來合理，但資料顯示「被當過一次」和「沒被當過」的落差，遠大於之後每多被當一次的差別。這正是需要用檢定確認、不能只憑直覺的地方。\n")
+  }
+  cat(":::\n")
+}
+```
+
+接著回覆「產生報告」，Skill 寫好結論摘要，產生一份 HTML 報告；摘要中提到的每個數字，都能在程式的輸出裡找到。
+
+::: {.callout-note collapse="true"}
+## 實際畫面：報告中的模型比較（點開查看）
+![](demo/part2/skill/round2/screenshots/report-compare.png){width=85%}
+:::
+
+```{r}
+#| include: false
+# ---- 比對表（只讀取 judgment.yml、Skill 的 result.json 與 verify_results.json，不做統計計算）----
+method_map <- c(logistic = "logistic", multinomial = "baseline_logit", ordinal = "cumulative_logit")
+same_txt <- function(a, b) {
+  if (.blank(a) || .blank(b)) return("")
+  if (identical(tolower(trimws(as.character(a))), tolower(trimws(as.character(b))))) "✅" else "❌"
+}
+skill_settings <- function(s) {
+  parts <- c(
+    if (!.blank(s$success)) paste0("成功類別 = ", s$success),
+    if (s$model %in% c("logistic", "multinomial", "ordinal")) (if (.blank(s$numeric)) "沒有變數當數值" else paste0("當數值：", paste(s$numeric, collapse = "、"))),
+    if (!.blank(s$baseline)) paste0("基準類別 = ", s$baseline),
+    if (!.blank(s$levels)) paste0(s$y, " 順序：", paste(s$levels, collapse = " < ")))
+  paste(parts, collapse = "；")
+}
+p2_judgment <- function(qq, s) {
+  h <- qq$judgment
+  none <- "（尚未執行 Skill）"; talk <- "（見對話紀錄）"
+  rows <- list(
+    c("資料結構", .show(h$structure), if (is.null(s)) none else talk, ""),
+    c(paste0("結果變數型態（", qq$variables$outcome, "）"), .show(h$outcome_type), if (is.null(s)) none else talk, ""),
+    c("解釋變數型態", .show(h$explanatory_type), if (is.null(s)) none else talk, ""),
+    c("方法", .show(h$method_id), if (is.null(s)) none else method_map[[s$model]], if (is.null(s)) "" else same_txt(h$method_id, method_map[[s$model]])),
+    c("設定", .show(h$settings), if (is.null(s)) none else skill_settings(s), ""))
+  out <- as.data.frame(do.call(rbind, rows), stringsAsFactors = FALSE)
+  names(out) <- c("項目", "人為判斷", "Skill", "一致")
+  out
+}
+
+num_row <- function(label, sv, vv, tol = 1e-3, note = "") {
+  ok <- if (is.na(sv) || is.na(vv)) "" else if (abs(sv - vv) <= tol * max(1, abs(vv))) "✅" else "❌"
+  data.frame(項目 = label, Skill = if (is.na(sv)) "（無）" else .num(sv),
+             驗證計算 = if (is.na(vv)) "—" else .num(vv), 一致 = ok, 說明 = note, check.names = FALSE)
+}
+num0 <- function(x) if (is.null(x) || length(x) == 0) NA_real_ else as.numeric(x[1])
+vget <- function(x, name) if (is.null(x[[name]])) NA_real_ else as.numeric(x[[name]])
+sk_coef <- function(s, term, field = "estimate", eq = NULL) { if (is.null(s)) return(NA_real_); r <- coef_row(s, term, eq); if (is.null(r)) NA_real_ else num0(r[[field]]) }
+sk_lr <- function(s, var) { if (is.null(s)) return(NA_real_); r <- lr_row(s, var); if (is.null(r)) NA_real_ else num0(r$lr) }
+
+# q1：二元 logistic。成功類別若是 fail，係數正負號相反，先對齊方向再比較。
+p2_numbers_q1 <- function(s) {
+  flip <- !is.null(s) && !.blank(s$success) && s$success != "pass"
+  sg <- if (flip) -1 else 1; note <- if (flip) "Skill 以 fail 為成功類別，已將係數乘以 −1 對齊" else ""
+  quant <- is.null(s) || all(c("studytime", "failures") %in% s$numeric)
+  nq <- if (quant) note else "Skill 的數值／類別設定和驗證程式不同：請改 verify.R 後重跑"
+  rbind(
+    num_row("studytime 係數", if (quant) sg * sk_coef(s, "studytime") else NA, vget(v$q1$coef, "studytime"), note = nq),
+    num_row("failures 係數", if (quant) sg * sk_coef(s, "failures") else NA, vget(v$q1$coef, "failures"), note = nq),
+    num_row("higher = yes 係數", sg * sk_coef(s, "higheryes"), vget(v$q1$coef, "higheryes"), note = note),
+    num_row("sex = M 係數", sg * sk_coef(s, "sexM"), vget(v$q1$coef, "sexM"), note = note),
+    num_row("LR 檢定：studytime", if (quant) sk_lr(s, "studytime") else NA, vget(v$q1$LR, "studytime")),
+    num_row("LR 檢定：failures", if (quant) sk_lr(s, "failures") else NA, vget(v$q1$LR, "failures")),
+    num_row("LR 檢定：higher", sk_lr(s, "higher"), vget(v$q1$LR, "higher")),
+    num_row("LR 檢定：sex", sk_lr(s, "sex"), vget(v$q1$LR, "sex")),
+    num_row("ROC 曲線下面積", if (quant && !is.null(s)) num0(s$auc) else NA, v$q1$auc))
+}
+# q2：累積 logit。Skill（statsmodels）與驗證程式（MASS::polr）的勝算比都是「落在較高類別」的方向。
+p2_numbers_q2 <- function(s) {
+  rbind(
+    num_row("sex = M：落在較高類別的勝算比", sk_coef(s, "sexM", "or_higher"), v$q2$odds_ratio_higher_sexM),
+    num_row("LR 檢定：sex", sk_lr(s, "sex"), v$q2$LR),
+    num_row("比例勝算假設檢定 LR", if (is.null(s) || is.null(s$proportional_odds)) NA else num0(s$proportional_odds$lr), v$q2$PO_LR,
+            tol = 0.01, note = "非比例勝算模型：Skill 自行以最大概似法配適，驗證程式用 R 的 ordinal 套件"))
+}
+# q3：baseline-category logit。LR 檢定和基準類別無關；係數只在基準類別同為 other 時比較。
+p2_numbers_q3 <- function(s) {
+  base <- if (is.null(s)) "other" else s$baseline
+  rows <- list(
+    num_row("整體模型 LR", if (is.null(s)) NA else num0(s$overall$lr), v$q3$LR_all),
+    num_row("LR 檢定：address", sk_lr(s, "address"), v$q3$LR_address),
+    num_row("LR 檢定：school", sk_lr(s, "school"), v$q3$LR_school))
+  if (identical(base, "other")) {
+    for (k in c("course", "home", "reputation")) for (t in c("addressU", "schoolMS"))
+      rows[[length(rows) + 1]] <- num_row(sprintf("%s vs other：%s 係數", k, t), sk_coef(s, t, eq = sprintf("%s vs other", k)), vget(v$q3$coef[[k]], t))
+  } else {
+    rows[[length(rows) + 1]] <- num_row("各方程式係數", NA, NA,
+      note = sprintf("Skill 以「%s」為基準類別，驗證程式用 other；只比對和基準類別無關的 LR 檢定", base))
+  }
+  do.call(rbind, rows)
+}
+
+# 第二次實測：模型比較（failures 當數值 vs 當類別）
+p2_numbers_cmp <- function(c) {
+  if (is.null(c)) return(NULL)
+  m <- c$models; is_num <- vapply(m$numeric, function(z) "failures" %in% z, logical(1))
+  vc <- v$q1_compare
+  rbind(
+    num_row("對數概似：failures 當數值", m$loglik[is_num], vc$loglik_numeric),
+    num_row("對數概似：failures 當類別", m$loglik[!is_num], vc$loglik_categorical),
+    num_row("AIC：failures 當數值", m$aic[is_num], vc$AIC_numeric),
+    num_row("AIC：failures 當類別", m$aic[!is_num], vc$AIC_categorical),
+    num_row("概似比檢定 LR", c$lr_test$lr, vc$LR),
+    num_row("概似比檢定 P 值", c$lr_test$p, vc$p))
+}
+tabs <- list(q1 = p2_numbers_q1(sk$q1), q2 = p2_numbers_q2(sk$q2), q3 = p2_numbers_q3(sk$q3))
+tab_cmp <- p2_numbers_cmp(r2c)
+tab_r2q1 <- if (is.null(r2q1)) NULL else p2_numbers_q1(r2q1)
+jud <- lapply(ids, function(id) p2_judgment(q[[id]], sk[[id]])); names(jud) <- ids
+n_method_same <- sum(vapply(jud, function(t) t$一致[t$項目 == "方法"] == "✅", logical(1)))
+n_method_cmp <- sum(vapply(jud, function(t) t$一致[t$項目 == "方法"] != "", logical(1)))
+all_num <- do.call(rbind, tabs)
+n_num_ok <- sum(all_num$一致 == "✅"); n_num_cmp <- sum(all_num$一致 != "")
+n2_ok <- if (is.null(tab_cmp)) 0 else sum(tab_cmp$一致 == "✅"); n2_cmp <- if (is.null(tab_cmp)) 0 else sum(tab_cmp$一致 != "")
+n2q1_ok <- if (is.null(tab_r2q1)) 0 else sum(tab_r2q1$一致 == "✅"); n2q1_cmp <- if (is.null(tab_r2q1)) 0 else sum(tab_r2q1$一致 != "")
+```
+
+::: {.callout-important}
+## 我們怎麼確認 Skill 是對的？
+```{r}
+#| echo: false
+#| results: asis
+if (n_method_cmp == 0) {
+  cat("- **選的模型**：Skill 實測完成後，這裡會顯示和我們判斷的比對結果\n")
+} else {
+  cat(sprintf("- **選的模型**：和我們依課本做的判斷，%d 題中有 **%d 題一樣**\n", n_method_cmp, n_method_same))
+}
+if (n_num_cmp == 0) {
+  cat("- **算出的數字**：Skill 實測完成後，會和獨立的 R 程式重算的結果比對\n")
+} else {
+  cat(sprintf("- **算出的數字（第一次實測）**：用另一套獨立的 R 程式重算，%d 項中有 **%d 項一致**\n", n_num_cmp, n_num_ok))
+}
+if (n2_cmp > 0) {
+  cat(sprintf("- **模型比較（第二次實測）**：%d 項中有 **%d 項一致**；第二次實測第 1 題的 %d 個數字也有 %d 個一致\n", n2_cmp, n2_ok, n2q1_cmp, n2q1_ok))
+}
+```
+:::
+
+::: {.callout-tip}
+## 實測結論
+- **模型判斷正確**：三題分別選了二元 logistic、累積 logit、baseline-category logit，和我們依課本做的判斷完全一致；每題都先確認資料是否獨立、成功類別、數字代碼當數值或類別、類別順序、基準類別，才推薦模型
+- **數字正確**：Skill 用 Python（statsmodels）計算，和我們用 R 獨立重算的結果全部一致（第一次 21 項、第二次模型比較 6 項）
+- **解釋到位**：主動提醒 pass 由期末成績換算，G1–G3 不能當解釋變數；第 2 題比例勝算假設不成立時，說明單一勝算比只代表平均效果，沒有把結果壓成兩類
+- **比人為判斷多走一步**：我們原本認為被當次數當數值比較好；Skill 先提醒等距假設可能不成立，再用模型比較證實當類別明顯較好
+- **實測帶來的改進**：看圖估讀數字、回覆次數太多、沒辦法檢查等距假設、重複選項被忽略，都是實測時發現、修改後再測一次確認的
+:::
+
+::: {.callout-note collapse="true"}
+## 核對明細（點開查看）
+
+```{r}
+#| echo: false
+#| results: asis
+for (id in ids) {
+  cat("\n\n**", q[[id]]$question, "**\n\n", sep = "")
+  cat("判斷比對（我們 vs Skill）\n\n")
+  print(knitr::kable(jud[[id]], row.names = FALSE))
+  cat("\n\n數字比對（Skill vs 獨立驗證程式）\n\n")
+  print(knitr::kable(tabs[[id]], row.names = FALSE))
+}
+if (!is.null(tab_cmp)) {
+  cat("\n\n**第二次實測：", q$q1_compare$question, "**\n\n", sep = "")
+  print(knitr::kable(tab_cmp, row.names = FALSE))
+}
+if (!is.null(tab_r2q1)) {
+  cat("\n\n**第二次實測：第 1 題的數字**\n\n")
+  print(knitr::kable(tab_r2q1, row.names = FALSE))
+}
+```
+
+- 實測在新的 Claude 對話中進行，只上傳 Skill 和資料，看不到我們的判斷和驗證結果
+- 驗證程式用課本示範的 R 指令（`glm`、`anova`、`MASS`、`ordinal`、`nnet`），Skill 用 Python 的 statsmodels：兩邊是不同語言、不同套件，各自獨立計算
+- 資料結構與變數型態是 Skill 在對話中和使用者確認的，詳見對話紀錄（`demo/part2/skill/transcript.md`、`demo/part2/skill/round2/transcript.md`）
+:::
+
+# 重點整理
+
+| 重點 | 內容 |
+|---|---|
+| 方法 | 結果兩類用 logistic 迴歸；三類以上依有沒有順序，選 baseline-category logit 或累積 logit |
+| Skill 能做什麼 | 選模型、配適、白話解釋，還能比較兩個模型、產生 HTML 報告 |
+| Skill 的分工 | Claude 判斷、確認、解釋；程式（Python）負責所有計算 |
+| Skill 的結構 | `SKILL.md`（規則與流程）＋ `references/`（速查、課本細節、決策樹）＋ `scripts/run_model.py`（計算、比較、報告） |
+| Skill 的特色 | 一則確認清單、未經同意不計算；每個方法都有課本依據；主動提醒分離、樣本數、比例勝算、等距假設等問題 |
+| 怎麼確認 Skill 是對的 | 和我們依課本做的判斷比對，數字用另一套獨立的 R 程式重算；實測發現的問題修改後再測一次 |
+
+::: {.callout-tip}
+## 下一步
+以上都假設**每筆資料彼此獨立**。同一個學生考兩次、同一班的學生互相影響時，要用 Part 3 的方法。
+:::
+
+# 參考文獻 {.unnumbered}
+
+Agresti, A. (2019). *An Introduction to Categorical Data Analysis* (3rd ed.). John Wiley & Sons.
+
+Cortez, P., & Silva, A. (2008). Using data mining to predict secondary school student performance. In *Proceedings of 5th Future Business Technology Conference* (pp. 5–12). UCI Machine Learning Repository. https://doi.org/10.24432/C5TG7T

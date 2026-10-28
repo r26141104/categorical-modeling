@@ -1,0 +1,189 @@
+{
+  "model": "multinomial",
+  "data": "/mnt/user-data/uploads/student_por.csv",
+  "y": "reason",
+  "categories": [
+    "course",
+    "home",
+    "other",
+    "reputation"
+  ],
+  "baseline": "other",
+  "x": [
+    "address",
+    "school"
+  ],
+  "numeric": [],
+  "n": 649,
+  "coefficients": [
+    {
+      "term": "(Intercept):1",
+      "equation": "course vs other",
+      "label": "(Intercept)",
+      "estimate": 1.8107377547604555,
+      "se": 0.31156697013157314,
+      "z": 5.811712820507868,
+      "p": 6.183685498192398e-09,
+      "or": 6.114957107224804,
+      "or_lower": 3.3203376956155437,
+      "or_upper": 11.261716081643035
+    },
+    {
+      "term": "addressU:1",
+      "equation": "course vs other",
+      "label": "address = U（相對於 R）",
+      "estimate": 0.01423292702752519,
+      "se": 0.29004048778427804,
+      "z": 0.04907220759506908,
+      "p": 0.9608617518410224,
+      "or": 1.014334697390243,
+      "or_lower": 0.5745050284272827,
+      "or_upper": 1.7908892479954754
+    },
+    {
+      "term": "schoolMS:1",
+      "equation": "course vs other",
+      "label": "school = MS（相對於 GP）",
+      "estimate": -0.8531829290606122,
+      "se": 0.28967514548128004,
+      "z": -2.9453094004426705,
+      "p": 0.00322631858289446,
+      "or": 0.42605666332394876,
+      "or_lower": 0.24148541183269737,
+      "or_upper": 0.7516987423178084
+    },
+    {
+      "term": "(Intercept):2",
+      "equation": "home vs other",
+      "label": "(Intercept)",
+      "estimate": 0.837096384994167,
+      "se": 0.3616171831354967,
+      "z": 2.314868938848268,
+      "p": 0.020620105699955513,
+      "or": 2.309650894046195,
+      "or_lower": 1.136924382100234,
+      "or_upper": 4.692033468852185
+    },
+    {
+      "term": "addressU:2",
+      "equation": "home vs other",
+      "label": "address = U（相對於 R）",
+      "estimate": 0.7195901433762455,
+      "se": 0.34760245255516625,
+      "z": 2.0701526645933055,
+      "p": 0.03843805039663823,
+      "or": 2.0535913601152367,
+      "or_lower": 1.0390318190840346,
+      "or_upper": 4.058814558785774
+    },
+    {
+      "term": "schoolMS:2",
+      "equation": "home vs other",
+      "label": "school = MS（相對於 GP）",
+      "estimate": -1.507332549868396,
+      "se": 0.3300186564653565,
+      "z": -4.5674161758386145,
+      "p": 4.937730357664618e-06,
+      "or": 0.22150003092772613,
+      "or_lower": 0.11599953267583352,
+      "or_upper": 0.4229522530757996
+    },
+    {
+      "term": "(Intercept):3",
+      "equation": "reputation vs other",
+      "label": "(Intercept)",
+      "estimate": 1.6302977123337714,
+      "se": 0.3373340386122457,
+      "z": 4.832888252370359,
+      "p": 1.3456633025933093e-06,
+      "or": 5.105394431197835,
+      "or_lower": 2.6356319874071645,
+      "or_upper": 9.889488525956041
+    },
+    {
+      "term": "addressU:3",
+      "equation": "reputation vs other",
+      "label": "address = U（相對於 R）",
+      "estimate": -0.243240662305441,
+      "se": 0.3302996826113578,
+      "z": -0.7364241478598286,
+      "p": 0.46147261339093115,
+      "or": 0.7840827918909928,
+      "or_lower": 0.41039792539297315,
+      "or_upper": 1.4980237143033577
+    },
+    {
+      "term": "schoolMS:3",
+      "equation": "reputation vs other",
+      "label": "school = MS（相對於 GP）",
+      "estimate": -1.9668230143793,
+      "se": 0.3420682479369903,
+      "z": -5.749797083597168,
+      "p": 8.93506207348519e-09,
+      "or": 0.13990061317344682,
+      "or_lower": 0.07155586681418387,
+      "or_upper": 0.27352308675305975
+    }
+  ],
+  "lr_tests": [
+    {
+      "variable": "address",
+      "lr": 11.83175868090575,
+      "df": 3,
+      "p": 0.007982276765258893
+    },
+    {
+      "variable": "school",
+      "lr": 44.11459626157898,
+      "df": 3,
+      "p": 1.4269154341845125e-09
+    }
+  ],
+  "overall": {
+    "lr": 64.62605363632974,
+    "df": 6,
+    "p": 5.143042556859915e-12
+  },
+  "effects": [
+    {
+      "variable": "address",
+      "value": "R",
+      "at": "R",
+      "course": 0.42085038427524846,
+      "home": 0.15895736458275014,
+      "other": 0.06882311304817085,
+      "reputation": 0.3513691380938305
+    },
+    {
+      "variable": "address",
+      "value": "U",
+      "at": "U",
+      "course": 0.3889091884826974,
+      "home": 0.29739514655810295,
+      "other": 0.0627008613978048,
+      "reputation": 0.2509948035613948
+    },
+    {
+      "variable": "school",
+      "value": "GP",
+      "at": "GP",
+      "course": 0.3889091884826974,
+      "home": 0.29739514655810295,
+      "other": 0.0627008613978048,
+      "reputation": 0.2509948035613948
+    },
+    {
+      "variable": "school",
+      "value": "MS",
+      "at": "MS",
+      "course": 0.5030498128361626,
+      "home": 0.19998761156499545,
+      "other": 0.19035703567997503,
+      "reputation": 0.10660553991886704
+    }
+  ],
+  "warnings": [],
+  "plots": [
+    "category_probabilities.png"
+  ]
+}

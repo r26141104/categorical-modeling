@@ -1,0 +1,62 @@
+{
+  "model": "compare",
+  "type": "logistic",
+  "data": "/mnt/user-data/uploads/student_por.csv",
+  "y": "pass",
+  "n": 649,
+  "models": [
+    {
+      "name": "A",
+      "x": [
+        "studytime",
+        "failures",
+        "higher",
+        "sex"
+      ],
+      "numeric": [
+        "studytime",
+        "failures"
+      ],
+      "categorical": [
+        "higher",
+        "sex"
+      ],
+      "loglik": -230.4831905722861,
+      "n_params": 5,
+      "deviance": 460.9663811445722,
+      "aic": 470.9663811445722
+    },
+    {
+      "name": "B",
+      "x": [
+        "studytime",
+        "failures",
+        "higher",
+        "sex"
+      ],
+      "numeric": [
+        "studytime"
+      ],
+      "categorical": [
+        "failures",
+        "higher",
+        "sex"
+      ],
+      "loglik": -225.72013893972925,
+      "n_params": 7,
+      "deviance": 451.4402778794585,
+      "aic": 465.4402778794585
+    }
+  ],
+  "nested": true,
+  "lr_test": {
+    "simple": "A",
+    "complex": "B",
+    "lr": 9.526103265113704,
+    "df": 2,
+    "p": 0.008539510147905275
+  },
+  "verdict": "P = 0.009，小於 0.05：較複雜的模型 B 明顯比較好，多出來的參數有必要（§5.2）。",
+  "best_aic": "B",
+  "warnings": []
+}

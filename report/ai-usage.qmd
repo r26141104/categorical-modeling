@@ -1,0 +1,140 @@
+---
+title: "AI 使用紀錄"
+subtitle: "Part 2 製作過程中使用 AI 的紀錄"
+author: "林才榆"
+lang: zh-TW
+format:
+  html:
+    toc: true
+    toc-title: 目錄
+    embed-resources: true
+    theme: cosmo
+    include-before-body: ../_nav/nav-ai.html
+---
+
+Part 2 的網頁、判斷表、Skill 與實測，都有使用 AI（Claude (Claude Opus 5.5)）協助，共 **10 筆**紀錄。每一筆都寫下請 AI 做什麼、AI 的建議、我的決定與理由，以及怎麼驗證。
+
+| 階段 | 筆數 |
+|---|---|
+| 網頁內容 | 4 |
+| 人為判斷 | 1 |
+| Skill 製作 | 3 |
+| Skill 實測 | 2 |
+
+| 決定 | 筆數 |
+|---|---|
+| 採用 | 8 |
+| 修改 | 2 |
+
+::: {.callout-note}
+## 使用原則
+- **人為判斷由我自己決定**：實測前的判斷表（資料結構、變數型態、該用的模型）由我依課本作答，AI 只批改與說明觀念
+- **數字一律由程式計算**：AI 不自己產生數字；所有數字都用另一套獨立的 R 程式驗證
+- **AI 的建議不一定照單全收**：每一筆都記錄我採用、修改或拒絕的理由
+:::
+
+# 逐筆紀錄
+
+## 22．2026-10-07　網頁內容
+
+**請 AI 做什麼**：請 AI 照 Part 1 版型撰寫 Part 2 網頁 modeling.qmd（理論與課本範例 → Skill 能做什麼 → 真實資料實測）
+
+**AI 的建議**：AI 撰寫三段內容：課本範例用馬蹄蟹（二元 logistic，§4.1–4.6）、鱷魚主食（baseline-category logit，§6.1）、政治意識形態（累積 logit 與比例勝算檢查，§6.2–6.3），另有完全分離的示範（§5.3）；文中數字一律由 R 帶入；實測段落在 Skill 輸出放入 demo/part2/skill/ 後自動顯示結果，並另寫 Part 2 用的比對程式（多個解釋變數、成功類別方向與基準類別自動對齊）
+
+**決定**：採用。內容依課本、格式與 Part 1 一致；實測結論留待組員實測後撰寫
+
+**怎麼驗證**：R 重算課本範例數值與課本一致（馬蹄蟹 β=0.497、鱷魚 x:2=−2.465、政黨 −3.634）；以模擬的 Skill 輸出測試比對表，21 項數字與 verify_results.json 一致；quarto render 成功
+
+## 23．2026-10-07　人為判斷
+
+**請 AI 做什麼**：填寫 demo/part2/judgment.yml 三題的判斷（資料結構、變數型態、方法、理由、設定、預期結論）
+
+**AI 的建議**：組員依課本作答判斷表，AI 依 Agresti 批改並說明觀念（變數型態的分辨、二元與多類別模型的選擇、叢集資料的條件），協助撰寫理由與預期結論的文字，並用 R 計算描述統計（Walc 與 reason 依性別、居住地、學校的分布）
+
+**決定**：修改。組員看過批改與說明後修正答案並定案
+
+**怎麼驗證**：對照課本 §1.1（變數尺度）、§4.1–4.4、§6.1–6.3；描述統計由 R 計算
+
+## 24．2026-10-26　網頁內容
+
+**請 AI 做什麼**：組員發現同組做法和已報告同學的內容不同，請 AI 以同學的無母數講義（老師已認可）為模板改寫 Part 2 網頁
+
+**AI 的建議**：AI 分析同學 repo 的架構（每個方法：Assumption → Hypothesis → 統計量 → 課本例題 → R code → 決策規則），將 modeling.qmd 的理論部分改為編號章節：二元 logistic（模型與 GLM 成分、假設、參數意義、MLE、H0/H1、Wald／LR／score、例題逐步計算、R code、決策規則、多個解釋變數、模型檢查，§3.1、§4.1–4.6、§5.1–5.3）完整撰寫；baseline-category logit（§6.1）與累積 logit（§6.2、比例勝算檢查 §6.3.2）用同樣骨架精簡撰寫；保留 Skill 與真實資料實測兩段
+
+**決定**：採用。組員選擇正文用繁體中文、保留後兩段；三個模型的深度依 AI 建議（logistic 完整、另兩個精簡）
+
+**怎麼驗證**：例題數字皆由 R 帶入並與課本對照（馬蹄蟹 β=0.497、LR=31.3；鱷魚 LR=16.80；政黨 e^3.634=37.9；比例勝算 LR=6.22、df=6）；quarto render 成功
+
+## 25．2026-10-26　網頁內容
+
+**請 AI 做什麼**：組員認為老師的重點是 Skill 的應用而非方法論，請 AI 精簡方法、加強 Skill 介紹
+
+**AI 的建議**：AI 將 modeling.qmd 改為三段：方法簡介只保留二元 logistic（模型、勝算比、LR 檢定、馬蹄蟹例題，§4.1–4.2；細節收入可展開框）＋多類別模型選擇總表（§6.1–6.2）；新增 Skill 介紹（流程、三條規則、檔案結構與各檔用途、methods.yml 中 Part 2 方法的選擇邏輯、確認事項、輸出與提醒），仿照同學的 skill-overview；第三段為 Skill 應用示範（真實資料實測）
+
+**決定**：採用。組員選擇只詳講 logistic、其餘以總表帶過；先改網頁再做 Skill 實測
+
+**怎麼驗證**：Skill 結構描述依 skill/SKILL.md、methods.yml、scripts/ 與 tools/build-skill.R 的實際內容；方法表直接由 methods.yml 讀取；例題數字由 R 帶入；quarto render 成功
+
+## 26．2026-10-26　Skill 製作
+
+**請 AI 做什麼**：組員說明每位組員要做自己 Part 專屬的 Skill，請 AI 仿照同學已報告的 nonparametric-stats-skill 架構，做 Part 2 的類別結果模型 Skill
+
+**AI 的建議**：AI 建立 categorical-modeling Skill：SKILL.md（一步一問、未經同意不計算、所有數字由 R 計算）、references/（methods.md 速查、textbook-methods.md 課本細節、decision-tree.md 決策樹，皆附 Agresti 節號 §4.1–4.6、§5.1–5.3、§6.1–6.3）、scripts/run_model.R（describe、plot、logistic、multinomial、ordinal，自動提醒分離、樣本數、比例勝算等）、decision-tree.png、範例資料、README、skill-overview 介紹頁；決策樹的判斷例子刻意不用實測三題，避免先寫入答案；modeling.qmd 第 2、3 節改為介紹與測試此 Skill，並改寫比對程式
+
+**決定**：採用。組員選擇：放在「俊逸skill」資料夾、用 R、互動方式照同學一步一問
+
+**怎麼驗證**：run_model.R 跑課本例題與課本一致（馬蹄蟹 β=0.497、LR=31.31；鱷魚 β=−2.465、LR=16.80）；用 run_model.R 產生的輸出測試網頁比對表，三題模型判斷一致、21 項數字與 verify_results.json 一致（測試輸出已刪除，正式實測仍待組員在乾淨資料夾進行）
+
+## 27．2026-10-26　Skill 製作
+
+**請 AI 做什麼**：組員希望大家能在 Claude 桌面版使用這個 Skill，請 AI 改成可以上傳到 Claude App 的形式
+
+**AI 的建議**：AI 查證 Claude 說明中心：Skill 以 ZIP 上傳（Customize → Skills），在雲端的程式執行環境中執行，不保證有 R；因此將計算程式改寫為 Python（statsmodels）的 run_model.py，取代 R 版；比例勝算假設檢定所需的非比例累積 logit 模型以最大概似法自行實作；更新 SKILL.md、references、README（加上 App 上傳步驟）、skill-overview 與 modeling.qmd；打包 categorical-modeling.zip
+
+**決定**：採用。目的是讓同學用桌面版 Claude 即可使用，不需安裝 R
+
+**怎麼驗證**：Python 版跑課本例題與課本一致（馬蹄蟹 β=0.497、LR=31.31、profile CI 1.361–2.032；鱷魚 β=−2.465、LR=16.80；顏色 LR=7.00）；完全分離的例子能正確發出警告；三題實測問題的 21 項數字與 R 的 verify_results.json 一致（測試輸出已刪除）；ZIP 解壓後可獨立執行
+
+## 28．2026-10-26　Skill 實測
+
+**請 AI 做什麼**：組員在 Claude 桌面版的新對話中實測 categorical-modeling Skill（三題），AI 協助判讀每一步並把結果放進網頁
+
+**AI 的建議**：組員上傳 Skill、在新對話提問並回答 Skill 的確認問題，AI 只在本對話判讀畫面、提供回覆範本；收到 categorical_results.zip 與對話紀錄後，AI 將結果放入 demo/part2/skill/，網頁比對表顯示三題模型判斷皆與人為判斷一致、21 項數字與 R 驗證程式一致；AI 草擬實測結論，並依實測發現的問題（Skill 從長條圖估讀比例）修正 run_model.py 的 plot 指令與 SKILL.md（第 2 版）
+
+**決定**：修改。實測結論由 AI 草擬，待組員確認後定案；Skill 修正後需重新上傳
+
+**怎麼驗證**：比對表由 judgment.yml、Skill 的 result.json 與 R 的 verify_results.json 自動產生；修正後的 plot 指令印出的比例與 R 計算的交叉表一致
+
+## 29．2026-10-26　網頁內容
+
+**請 AI 做什麼**：組員希望內容不要只以 logistic 為主，補完整其他模型
+
+**AI 的建議**：AI 提出三個方向（補完整方法講義、Skill 加入 Poisson 迴歸、加深 logistic），組員選擇只補完整方法講義；AI 將先前核對過的完整版三章（二元 logistic §4.1–4.6、§5.1–5.3；baseline-category logit §6.1；累積 logit §6.2–6.3）接回 modeling.qmd，每章依「模型與假設 → 假設檢定 → 統計量 → 課本例題 → R code → 決策規則」排列，Skill 介紹與實測段落不變
+
+**決定**：採用。組員考量 20 分鐘的報告時間，只做成本最低的方向
+
+**怎麼驗證**：例題數字由 R 帶入（馬蹄蟹 LR=31.3、鱷魚 LR=16.80、政黨 37.9、比例勝算 LR=6.22）；網頁比對表仍為 3 題模型一致、21 項數字一致；quarto render 成功
+
+## 30．2026-10-28　Skill 製作
+
+**請 AI 做什麼**：組員希望報告重點放在 Skill，請 AI 加強 Skill 功能：模型比較、自動產生報告、減少確認的回覆次數
+
+**AI 的建議**：AI 在 run_model.py 新增 compare（巢狀模型的概似比檢定與 AIC，自動判斷是否巢狀，§4.3、§5.1–5.2）與 report（由 result.json 產生 HTML 報告）；SKILL.md 改為一則確認清單（附預設值，回覆「照預設」即可），配適後主動建議比較但等同意才做；references 補上模型比較（§4.3、§5.1–5.2）；更新 README、skill-overview 並重新打包
+
+**決定**：採用。組員選擇 compare、report、快速確認三項；比例勝算不成立的後續分析未納入
+
+**怎麼驗證**：compare 的對數概似、AIC、LR 檢定與 R 的 glm()／anova()／AIC() 一致（failures 數值 vs 類別 LR = 9.53、P = 0.0085；累積 logit 與 baseline-category logit 的比較也一致）；課本例題數字不變（馬蹄蟹 β = 0.497、鱷魚 LR = 16.80）
+
+## 31．2026-10-28　Skill 實測
+
+**請 AI 做什麼**：組員在 Claude 桌面版新對話中實測新功能（確認清單、模型比較、產生報告），AI 比對結果並修正實測發現的問題，再調整報告頁與製作教學
+
+**AI 的建議**：組員先自行寫下判斷（failures 當數值較好）再實測；AI 比對 Skill 輸出與 R 驗證（第 1 題 9 項、模型比較 6 項皆一致），確認報告摘要的數字都來自程式輸出；從對話紀錄發現重複的 --ref 只保留最後一個，修正為全部合併；modeling.qmd 的方法細節收進可展開框，新增「Skill 是怎麼做出來的？」與第二次實測段落；製作教學新增步驟八
+
+**決定**：採用。人為判斷與檢定結果不一致（資料支持 failures 當類別），照實呈現於報告頁
+
+**怎麼驗證**：比對表由 judgment.yml、Skill 的 result.json 與 verify_results.json 自動產生；修正後用同一個指令重跑，結果與實測相同；quarto render 成功
+
+---
+
+原始紀錄：`report/ai-log.csv`（全組共用格式：id、date、member、tool、stage、prompt_summary、ai_suggestion、decision、decision_reason、verification）

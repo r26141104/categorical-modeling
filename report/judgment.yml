@@ -1,0 +1,66 @@
+# Part 2 真實資料實測：研究問題與「人為判斷」
+#
+# 請組員依課本自己判斷並填寫每一題的 judgment（Claude 不可代填；可以請 Claude 解釋概念，或照你給的答案填）。
+# 填完後，網頁會把這裡的判斷和 Skill 的判斷並排比較。
+#
+# 可填的值：
+#   structure: independent（獨立）、matched_pairs（配對）、repeated_measures（重複測量）、clustered（叢集）
+#   type:      binary（二元）、nominal（名目）、ordinal（有序）、continuous（連續）、count（計數）
+#   method_id: 從 skill/knowledge/methods.yml 選一個方法代號，Part 2 相關的有：
+#              logistic（二元 logistic）、baseline_logit（多類別 logistic）、cumulative_logit（有序 logistic）；
+#              也可以選其他 Part 的方法
+#   method:    用自己的話描述方法
+#   book_ref:  依據的課本節號（內部紀錄用）
+#   reason:    為什麼選這個方法（一兩句話）
+#   settings:  其他設定，例如 studytime 要當數值還是類別、基準類別
+
+data: data/uci-student/student_por.csv
+
+questions:
+  - id: q1
+    question: 讀書時間（studytime）、被當次數（failures）、想不想讀大學（higher）、性別（sex），哪些會影響是否及格（pass）？
+    variables: {outcome: pass, explanatory: [studytime, failures, higher, sex]}
+    judgment:
+      structure: independent
+      outcome_type: binary
+      explanatory_type: {studytime: ordinal, failures: count, higher: binary, sex: binary}
+      method_id: logistic
+      method: "多元 logistic 迴歸：以「及格」為成功類別，同時放入 studytime、failures、higher、sex 四個解釋變數。"
+      book_ref: "§4.1–4.4（logistic 模型、推論、類別型解釋變數、多個解釋變數）、§4.6（ROC）、§5.1.1（樣本數）"
+      reason: "結果變數 pass 只有兩類，每位學生只出現一次、彼此獨立，又要同時評估好幾個解釋變數的影響，所以用 logistic 迴歸。它可以估計「其他變數固定時」每個變數的勝算比，並用概似比檢定判斷各變數是否重要。studytime 和 failures 有順序、類別少，當數值分數只需要各 1 個參數，解釋起來也比較直接（每增加一級，勝算乘以多少）；缺點是要假設每一級的效果相同。"
+      settings: "成功類別 = pass；studytime 當數值分數（1–4）；failures 當數值分數（0–3）；higher、sex 為類別（參考組 no、F）"
+      expected_conclusion: "被當次數越多，及格機率越低；想讀大學的學生及格機率較高；讀書時間越長，及格機率越高；性別的影響可能不明顯。"
+  - id: q2
+    question: 男生和女生的週末飲酒量（Walc，1 很少 – 5 很多）不同嗎？
+    variables: {outcome: Walc, explanatory: sex}
+    judgment:
+      structure: independent
+      outcome_type: ordinal
+      explanatory_type: binary
+      method_id: cumulative_logit
+      method: "用累積 logit 模型（cumulative logit，比例勝算模型），把 Walc 當成有順序的結果（1 < 2 < 3 < 4 < 5），sex 當解釋變數。"
+      book_ref: "§6.2（累積 logit 模型）、§6.3（比例勝算假設的檢查）"
+      reason: "因為 Walc 有 5 類，而且由小到大有順序，所以不能用二元 logistic；用多類別 logit 或卡方檢定又會忽略順序。累積 logit 模型利用了順序，只用一個勝算比就能描述男生落在較高飲酒量類別的勝算是女生的幾倍；但要檢查比例勝算假設是否成立。"
+      settings: "Walc 順序 1 < 2 < 3 < 4 < 5；sex 參考組 = F"
+      expected_conclusion: "依描述統計，預期男生的週末飲酒量較高，因為中位數比較大（男生 3、女生 2；選 4–5 的比例男生 35.7%、女生 9.6%）。"
+  - id: q3
+    question: 居住地（address，都市／鄉村）和就讀學校（school），跟選校原因（reason）有關嗎？
+    variables: {outcome: reason, explanatory: [address, school]}
+    judgment:
+      structure: independent
+      outcome_type: nominal
+      explanatory_type: {address: binary, school: binary}
+      method_id: baseline_logit
+      method: "用 baseline_logit 模型（baseline-category logit），把 reason 當成沒有順序的類別結果，address 和 school 當解釋變數，以 other 為基準類別。"
+      book_ref: "§6.1（baseline-category logit 模型）"
+      reason: "因為 reason 有 4 類，而且類別之間沒有順序（不用排順序），所以不能用二元 logistic，也不能用累積 logit；baseline_logit 會拿每一類和基準類別比較，看居住地和學校怎麼影響選每個原因的勝算。"
+      settings: "基準類別 = other；address 參考組 = R；school 參考組 = GP"
+      expected_conclusion: "依描述統計，預期都市學生比較常因為「離家近」選校；兩所學校的差異分散在各原因，GP 較常因名聲和離家近，MS 較常因課程和其他。"
+  - id: q1_compare
+    question: 第 1 題的追問：failures（被當次數 0–3）當數值分數好，還是當類別好？
+    variables: {outcome: pass, explanatory: [studytime, failures, higher, sex], compare: failures}
+    judgment:
+      choice: numeric
+      method: "比較兩個巢狀模型：failures 當數值分數 vs 當類別（其他設定同 q1），用概似比檢定"
+      book_ref: "§4.3（數值分數 vs 類別）、§5.2（巢狀模型的概似比檢定）"
+      reason: "當作數值比較好，因為它並不是一個 0 或 1 的答案。"

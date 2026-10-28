@@ -1,0 +1,123 @@
+---
+title: "類別結果模型 Skill — 介紹"
+subtitle: "檔案結構與每個檔案的功能"
+author: "林才榆"
+date: today
+date-format: "YYYY/MM/DD"
+lang: zh-TW
+format:
+  html:
+    toc: true
+    toc-title: 目錄
+    number-sections: true
+    embed-resources: true
+    include-before-body: _nav/nav-overview.html
+    theme: cosmo
+---
+
+# Skill 能做什麼？
+
+使用者丟入資料檔，用平常說話的方式問「哪些因素會影響……？」，Skill 會：
+
+1. 描述資料，用**一則確認清單**列出所有設定（附預設值與理由）和推薦的模型
+2. 使用者回覆「照預設」或只改幾項，**經同意**才計算
+3. 用 Python（statsmodels）配適模型，輸出勝算比、概似比檢定、預測機率與圖
+4. 白話解釋結果，提醒假設與限制
+5. 需要時**比較兩個模型**（例如數字代碼當數值還是類別），最後**產生 HTML 分析報告**
+
+| 結果變數 | 模型 | 教科書 |
+|---|---|---|
+| 兩類 | 二元 logistic 迴歸 | Agresti §4.1–4.6、§5.1–5.3 |
+| 三類以上、沒有順序 | baseline-category logit | §6.1 |
+| 三類以上、有順序 | 累積 logit（比例勝算模型） | §6.2–6.3 |
+| 上面任一種 | 比較兩個模型（概似比檢定、AIC） | §4.3、§5.1–5.2 |
+
+# 檔案結構（File Structure）
+
+Skill 採用**分層設計**：主檔精簡、永遠載入；知識放在 `references/`，需要時才讀；計算交給 `scripts/`。
+
+```text
+categorical-modeling/
+├── SKILL.md                    <- 主檔：行為規則與分析流程
+├── references/
+│   ├── methods.md              <- 三個模型速查
+│   ├── textbook-methods.md     <- 課本細節（假設、公式）
+│   └── decision-tree.md        <- 選模型的決策樹
+├── scripts/
+│   └── run_model.py            <- 實際計算＋畫圖＋比較模型＋產生報告
+├── data/                       <- 範例資料
+└── decision-tree.png           <- 決策樹圖
+```
+
+- **SKILL.md**：永遠載入，控制 Claude **怎麼做**
+- **references/**：需要時才讀，存放**知識**
+- **scripts/**：需要計算數字或畫圖時才執行
+
+## 一句話說明
+
+| 檔案 | 用途 |
+|---|---|
+| `SKILL.md` | 定義觸發條件、範圍、行為規則、六步驟流程（大腦） |
+| `methods.md` | 三個模型與模型比較的速查：$H_0$、統計量、效果量、對應函式、指令 |
+| `textbook-methods.md` | 完整的假設、公式、注意事項（最深的一層） |
+| `decision-tree.md` | 幫 Claude 決定**用哪個模型**、還要問使用者哪些設定 |
+| `run_model.py` | 實際配適與比較模型（statsmodels）、輸出結果與圖、產生報告 |
+
+# SKILL.md — 大腦
+
+**功能**：定義 Skill 什麼時候啟動、涵蓋哪些模型、Claude 的**行為規則與回答流程**。修改這個檔案就會改變 Claude 的做法。
+
+- **行為規則（最優先）**
+  - **未經使用者明確同意，不畫圖、不配適、不比較、不產生報告**
+  - 資料是否獨立一定讓使用者確認
+  - 每則訊息結尾都寫清楚「回覆什麼就會做什麼」
+  - **所有數字都由程式計算**，Claude 不能心算、修改數字，也不能從圖上估讀
+- **回答流程**：描述資料＋確認清單 →（先畫圖）→ 配適 → 解釋與注意事項 →（比較模型）→（產生報告）
+- **快速確認清單**：所有設定一次列出、附預設值與理由，回覆「照預設」即可；要改只寫編號
+- **範圍外的處理**：配對或重複測量資料、計數結果、連續結果，說明原因與適合的方法，不硬套
+
+> 核心原則：先問清楚，再動手；數字一律交給程式。
+
+# references/ — 知識庫
+
+## methods.md — 速查卡
+
+每個模型列出：模型式、虛無假設、統計量與分配、效果量（勝算比）、信賴區間、對應的 Python 與課本 R 函式、`run_model.py` 指令，以及三個模型共用的決策規則（$LR \ge \chi^2_{df,\alpha}$ 時拒絕 $H_0$）。
+
+## textbook-methods.md — 課本細節
+
+每個模型包含：完整假設、參數的意義、最大概似估計、推論方式、模型檢查（適合度、ROC、完全分離、比例勝算假設）、常見誤解，全部附上 Agresti 的節號與支持等級。
+
+## decision-tree.md — 決策樹
+
+先確認**資料結構**（是否獨立）與**結果型態**（Phase 0），再依「幾類、有沒有順序」選模型，最後確認模型設定（成功類別、數值或類別、參考組、基準類別、類別順序）。
+
+![選模型的決策樹](decision-tree.png){width=75%}
+
+# scripts/run_model.py — 計算與畫圖
+
+**功能**：SKILL.md 規定「一律用程式計算」，這就是被執行的程式。
+
+| 指令 | 做什麼 | 輸出 |
+|---|---|---|
+| `describe` | 描述變數型態、次數、缺失值、可能不獨立的跡象 | 畫面摘要 |
+| `plot` | 結果變數依解釋變數分組的比例長條圖 | PNG |
+| `logistic` | 二元 logistic：勝算比與 profile 信賴區間、LR 檢定、AUC、預測機率 | `result.json`、預測機率曲線、ROC 曲線 |
+| `multinomial` | baseline-category logit：各方程式勝算比、LR 檢定、預測機率 | `result.json`、各類別預測機率圖 |
+| `ordinal` | 累積 logit：較高類別的勝算比、LR 檢定、**比例勝算假設檢定** | `result.json`、各類別預測機率圖 |
+| `compare` | 比較兩個模型：巢狀時做 LR 檢定，否則比較 AIC | `result.json` |
+| `report` | 把多個分析結果整理成一份 HTML 報告（表格、圖、注意事項、結論摘要） | `report.html` |
+
+程式會自動提醒：完全分離（`SEPARATION`）、樣本太少（`FEW_EVENTS`）、deviance 不能當適合度檢定（`GOF_NOTE`）、比例勝算假設不成立（`PO_VIOLATED`）、模型不是巢狀（`NOT_NESTED`）、缺失值（`MISSING`）。
+
+```bash
+python scripts/run_model.py logistic --csv data/crabs.csv --y y --x width --numeric width
+```
+
+# 總結
+
+- **設計**：分層（精簡的主檔＋分層的知識＋計算程式）
+- **行為**：確認清單一次列出；未經同意不畫圖、不配適、不比較、不產生報告
+- **範圍**：Agresti 第 4–6 章的三個類別結果模型＋模型比較，每個方法都附課本節號
+- **可信度**：數字由程式計算；已用課本例題（馬蹄蟹、鱷魚）核對，結果與課本一致
+- **使用方式**：壓成 ZIP 上傳到 Claude App（Customize → Skills），大家都能在桌面版使用
