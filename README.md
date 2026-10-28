@@ -1,5 +1,10 @@
 # categorical-modeling
 
+**直接線上看（不用下載）：**
+[Part 2 報告](https://r26141104.github.io/categorical-modeling/report/modeling.html)｜[Skill 介紹](https://r26141104.github.io/categorical-modeling/skill-overview.html)｜[製作教學](https://r26141104.github.io/categorical-modeling/make-skill-tutorial.html)｜[AI 使用紀錄](https://r26141104.github.io/categorical-modeling/report/ai-usage.html)
+
+**想自己用這個 Skill：** 下載 [categorical-modeling.zip](https://github.com/r26141104/categorical-modeling/raw/main/categorical-modeling.zip)，上傳到 Claude（自訂 → 技能）即可。
+
 一個 Claude Agent Skill：**類別結果變數的模型分析顧問**。使用者提供資料檔和研究問題，
 Skill 會判斷該用哪一個模型、說明假設與限制，用 Python（statsmodels）實際配適模型，並以白話解釋勝算比與預測機率；
 還能**比較兩個模型**（例如數字代碼當數值還是類別），最後把分析**整理成一份 HTML 報告**。
