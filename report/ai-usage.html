@@ -2188,6 +2188,7 @@ vertical-align: -.125em;
   <li><a href="#網頁內容-3" id="toc-網頁內容-3" class="nav-link" data-scroll-target="#網頁內容-3">29．2026-10-26　網頁內容</a></li>
   <li><a href="#skill-製作-2" id="toc-skill-製作-2" class="nav-link" data-scroll-target="#skill-製作-2">30．2026-10-28　Skill 製作</a></li>
   <li><a href="#skill-實測-1" id="toc-skill-實測-1" class="nav-link" data-scroll-target="#skill-實測-1">31．2026-10-28　Skill 實測</a></li>
+  <li><a href="#skill-實測-2" id="toc-skill-實測-2" class="nav-link" data-scroll-target="#skill-實測-2">32．2026-10-29　Skill 實測</a></li>
   </ul></li>
   </ul>
 </nav>
@@ -2221,7 +2222,7 @@ vertical-align: -.125em;
 </header>
 
 
-<p>Part 2 的網頁、判斷表、Skill 與實測，都有使用 AI（Claude (Claude Opus 5.5)）協助，共 <strong>10 筆</strong>紀錄。每一筆都寫下請 AI 做什麼、AI 的建議、我的決定與理由，以及怎麼驗證。</p>
+<p>Part 2 的網頁、判斷表、Skill 與實測，都有使用 AI（Claude (Claude Opus 5.5)）協助，共 <strong>11 筆</strong>紀錄。每一筆都寫下請 AI 做什麼、AI 的建議、我的決定與理由，以及怎麼驗證。</p>
 <table class="caption-top table">
 <thead>
 <tr class="header">
@@ -2244,7 +2245,7 @@ vertical-align: -.125em;
 </tr>
 <tr class="even">
 <td>Skill 實測</td>
-<td>2</td>
+<td>3</td>
 </tr>
 </tbody>
 </table>
@@ -2258,7 +2259,7 @@ vertical-align: -.125em;
 <tbody>
 <tr class="odd">
 <td>採用</td>
-<td>8</td>
+<td>9</td>
 </tr>
 <tr class="even">
 <td>修改</td>
@@ -2354,6 +2355,13 @@ vertical-align: -.125em;
 <p><strong>AI 的建議</strong>：組員先自行寫下判斷（failures 當數值較好）再實測；AI 比對 Skill 輸出與 R 驗證（第 1 題 9 項、模型比較 6 項皆一致），確認報告摘要的數字都來自程式輸出；從對話紀錄發現重複的 –ref 只保留最後一個，修正為全部合併；modeling.qmd 的方法細節收進可展開框，新增「Skill 是怎麼做出來的？」與第二次實測段落；製作教學新增步驟八</p>
 <p><strong>決定</strong>：採用。人為判斷與檢定結果不一致（資料支持 failures 當類別），照實呈現於報告頁</p>
 <p><strong>怎麼驗證</strong>：比對表由 judgment.yml、Skill 的 result.json 與 verify_results.json 自動產生；修正後用同一個指令重跑，結果與實測相同；quarto render 成功</p>
+</section>
+<section id="skill-實測-2" class="level2">
+<h2 class="anchored" data-anchor-id="skill-實測-2">32．2026-10-29　Skill 實測</h2>
+<p><strong>請 AI 做什麼</strong>：我追問「既然 failures 當類別較好，為什麼報告仍用數值模型的結果」，決定在同一個實測對話中用類別重新配適並更新報告</p>
+<p><strong>AI 的建議</strong>：AI 先用 R 算出類別模型的預期數字，請我在實測對話中回覆「用 failures 當類別重新配適」與「更新報告」；比對後在報告頁新增「用比較好的模型重新配適」一節（勝算比、預測機率、和數值模型的差別），驗證程式新增類別模型，核對表加入 16 項比對；第 1 題結果旁註明 failures 是當數值算的</p>
+<p><strong>決定</strong>：採用。讓「比較 → 選模型 → 用選定的模型下結論」的流程完整；也發現 Skill 比較後不會自動改用較好的模型，寫進報告頁</p>
+<p><strong>怎麼驗證</strong>：Skill 的勝算比（0.164、0.158、0.099）、LR 檢定（failures 49.04、df = 3）、整體 LR 106.35、預測機率（0.927、0.674、0.666、0.555）、AUC 0.800 與 R 的 glm()、car::Anova()、pROC 一致，16 項全部相同；Skill 的報告摘要以類別模型為最終模型；quarto render 成功</p>
 <hr>
 <p>原始紀錄：<code>report/ai-log.csv</code>（全組共用格式：id、date、member、tool、stage、prompt_summary、ai_suggestion、decision、decision_reason、verification）</p>
 </section>

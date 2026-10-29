@@ -36,6 +36,7 @@ names(sk) <- ids
 rd <- function(f) if (file.exists(f)) jsonlite::read_json(f, simplifyVector = TRUE) else NULL
 r2q1 <- rd("demo/part2/skill/round2/q1/result.json")          # 第二次實測（新版 Skill）
 r2c <- rd("demo/part2/skill/round2/q1_compare/result.json")
+r2cat <- rd("demo/part2/skill/round2/q1_cat/result.json")     # 比較之後，用 failures 當類別重新配適
 skill_plot <- function(id, name) {
   f <- file.path("demo/part2/skill", id, paste0(name, ".png"))
   if (!is.null(sk[[id]]) && file.exists(f)) f else NULL
@@ -101,7 +102,7 @@ logistic 迴歸是**廣義線性模型**（generalized linear model, GLM）的�
 | 連結函數（link function） | $\eta_i = \text{logit}(\pi_i)$ |
 
 ::: {.callout-note}
-**Note**
+## Note
 logit 把 $(0, 1)$ 的機率對應到整條實數線，所以不論 $x$ 多大多小，$\pi(x)$ 都落在 0 和 1 之間，畫出來是 S 形曲線。若改用一般線性迴歸 $\pi(x) = \alpha + \beta x$，預測機率可能超出 $[0, 1]$。
 :::
 
@@ -150,7 +151,7 @@ $$
 其中 $\ell_0$、$\ell_1$ 是虛無模型（只有截距）與完整模型的最大對數概似，$D_0$、$D_1$ 是兩個模型的 **deviance**。
 
 ::: {.callout-note}
-**Note**
+## Note
 大樣本時三者結果相近。樣本不大或效果很強時 Wald 檢定較不可靠，教科書建議優先使用**概似比檢定**與 **profile likelihood 信賴區間**（把 LR 檢定反轉得到的區間）。
 :::
 
@@ -226,7 +227,7 @@ predict(fit, data.frame(width = c(21, 26.3, 33.5)), type = "response")   # 預�
 ```
 
 ::: {.callout-note}
-**Note**
+## Note
 `summary()` 印出的 `z value` 與 `Pr(>|z|)` 是 **Wald 檢定**；`Null deviance` 減 `Residual deviance` 就是 **LR 統計量**。`confint()` 給的是 profile likelihood 區間，`confint.default()` 才是 Wald 區間 $\hat\beta \pm z_{\alpha/2} SE$。
 :::
 
@@ -331,7 +332,7 @@ $$
 3. 結果類別**沒有順序**（有順序時改用第 3 節的模型，才能利用順序資訊）。
 
 ::: {.callout-note}
-**Note**
+## Note
 基準類別的選擇**不影響**模型的配適與預測機率，只改變係數是「和誰比」。
 :::
 
@@ -680,7 +681,7 @@ if (file.exists(f)) cat(sprintf("::: {.callout-note collapse=\"true\"}\n## 實�
 | 假設 | 每增加一級，效果都相同（等距） | 不做等距假設，每一級各自估計 |
 | 解釋 | 「每多被當一次，勝算乘以 …」 | 「被當 1 次 vs 0 次、2 次 vs 0 次……」 |
 
-數值分數模型是類別模型的**特例**（巢狀），所以可以用**概似比檢定**比較：$H_0$ 是「較簡單的數值模型就夠了」。$P$ 小代表類別模型明顯較好，也就是等距假設不成立。Skill 在配適完會主動**建議**做這個比較，但要使用者同意才執行。
+數值分數模型是類別模型的**特例**（巢狀），所以可以用**概似比檢定**比較：$H_0$ 是「較簡單的數值模型就夠了」。$P$ 小代表類別模型明顯較好，也就是等距假設不成立。Skill 在配適完會主動**建議**做這個比較，但要使用者同意才執行。比較完後，Skill 不會自動改用較好的模型；要用較好的設定重新配適，才會得到它的勝算比和預測機率。
 
 ## 產生分析報告
 
@@ -797,6 +798,8 @@ if (!is.null(s)) {
 }
 ```
 
+這裡的 failures 是**當數值**算的，代表「平均每多被當一次」的效果。後面的追問會用模型比較檢查這個假設，並改用類別重新配適。
+
 ## 男生和女生的週末飲酒量不同嗎？
 
 ```{r}
@@ -885,11 +888,54 @@ if (!is.null(h) && !is.null(r2c)) {
 }
 ```
 
-接著回覆「產生報告」，Skill 寫好結論摘要，產生一份 HTML 報告；摘要中提到的每個數字，都能在程式的輸出裡找到。
+## 用比較好的模型重新配適
+
+比較只告訴我們哪個模型較好，第 1 題原本的勝算比仍來自 failures 當數值的模型。所以我再請 Skill 用較好的模型重新配適：
+
+> 用 failures 當類別重新配適第 1 題，其他設定不變（成功類別 pass，studytime 當數值，higher 參考組 no，sex 參考組 F）。
+
+```{r}
+#| echo: false
+#| results: asis
+if (!is.null(r2cat)) {
+  cf <- r2cat$coefficients; ef <- r2cat$effects
+  pf <- function(k) { r <- ef[ef$variable == "failures" & ef$value == as.character(k), ]; if (nrow(r)) fmt_num(r$probability[1], 3) else "—" }
+  rows <- lapply(0:3, function(k) {
+    if (k == 0) return(data.frame(被當次數 = "0 次（參考組）", 勝算比 = "1", `95% CI` = "—", 預測及格機率 = pf(0), check.names = FALSE))
+    r <- cf[cf$term == paste0("failures", k), ][1, ]
+    data.frame(被當次數 = paste0(k, " 次"), 勝算比 = fmt_num(r$or, 3),
+               `95% CI` = sprintf("%s – %s", fmt_num(r$or_lower, 3), fmt_num(r$or_upper, 3)),
+               預測及格機率 = pf(k), check.names = FALSE)
+  })
+  print(knitr::kable(do.call(rbind, rows), row.names = FALSE))
+  l <- lr_row(r2cat, "failures")
+  cat(sprintf("\n\n- failures 的概似比檢定：$LR = %s$，$df = %d$，$P %s$；AUC = %s（數值模型是 %s）\n",
+              fmt_num(l$lr, 2), as.integer(l$df), ptxt(l$p), fmt_num(r2cat$auc, 3), fmt_num(r2q1$auc, 3)))
+  cat("- 預測機率的條件：讀書時間固定在平均數，想讀大學 = yes、性別 = F\n")
+  for (vv in c("higher", "studytime", "sex")) {
+    l <- lr_row(r2cat, vv); r <- cf[grepl(paste0("^", vv), cf$term), ][1, ]
+    cat(sprintf("- %s：勝算比 %s；$P %s$\n", r$label, or_txt(r), ptxt(l$p)))
+  }
+}
+```
+
+::: {.callout-tip}
+## 重新配適後看到什麼？
+- **效果集中在「有沒有被當過」**：被當 1 次，及格勝算就降到約六分之一，預測機率從 `r pf(0)` 降到 `r pf(1)`；被當 2 次、3 次和 1 次差不多
+- **數值模型的問題**：它假設每多被當一次，勝算都乘以 `r fmt_num(r2q1$coefficients$or[r2q1$coefficients$term == "failures"], 3)`，會**低估第一次被當的衝擊**，又**高估之後每多一次的影響**
+- 被當 2 次、3 次的學生很少（16 人、14 人），信賴區間很寬，不能斷言 1、2、3 次之間的高低順序
+- 其他變數的結論不變：想讀大學、讀書時間和及格有關，性別沒有
+:::
+
+最後回覆「更新報告」，Skill 把三次分析（數值模型、模型比較、類別模型）整理成一份 HTML 報告，並在摘要中說明**以類別模型為最終模型**；摘要中提到的每個數字，都能在程式的輸出裡找到。
 
 ::: {.callout-note collapse="true"}
-## 實際畫面：報告中的模型比較（點開查看）
+## 實際畫面：重新配適的結果與報告（點開查看）
+![](demo/part2/skill/round2/screenshots/refit-results.png){width=85%}
+
 ![](demo/part2/skill/round2/screenshots/report-compare.png){width=85%}
+
+![](demo/part2/skill/round2/screenshots/report-refit.png){width=85%}
 :::
 
 ```{r}
@@ -987,7 +1033,29 @@ p2_numbers_cmp <- function(c) {
     num_row("概似比檢定 LR", c$lr_test$lr, vc$LR),
     num_row("概似比檢定 P 值", c$lr_test$p, vc$p))
 }
+# 比較之後：failures 當類別重新配適
+p2_numbers_cat <- function(s) {
+  if (is.null(s)) return(NULL)
+  vk <- v$q1_cat
+  pr <- function(k) { e <- s$effects; r <- e[e$variable == "failures" & e$value == as.character(k), ]; if (nrow(r)) r$probability[1] else NA }
+  rows <- list()
+  for (k in 1:3) rows[[length(rows) + 1]] <- num_row(sprintf("勝算比：failures = %d vs 0", k), sk_coef(s, paste0("failures", k), "or"), vget(vk$odds_ratio, sprintf("factor(failures)%d", k)))
+  rows <- c(rows, list(
+    num_row("勝算比：studytime", sk_coef(s, "studytime", "or"), vget(vk$odds_ratio, "studytime")),
+    num_row("勝算比：higher = yes", sk_coef(s, "higheryes", "or"), vget(vk$odds_ratio, "higheryes")),
+    num_row("勝算比：sex = M", sk_coef(s, "sexM", "or"), vget(vk$odds_ratio, "sexM")),
+    num_row("LR 檢定：failures（df = 3）", sk_lr(s, "failures"), vget(vk$LR, "factor(failures)")),
+    num_row("LR 檢定：studytime", sk_lr(s, "studytime"), vget(vk$LR, "studytime")),
+    num_row("LR 檢定：higher", sk_lr(s, "higher"), vget(vk$LR, "higher")),
+    num_row("LR 檢定：sex", sk_lr(s, "sex"), vget(vk$LR, "sex")),
+    num_row("整體模型 LR", num0(s$overall$lr), vk$LR_overall)))
+  for (k in 0:3) rows[[length(rows) + 1]] <- num_row(sprintf("預測及格機率：被當 %d 次", k), pr(k), vget(vk$prob_failures, paste0("f", k)))
+  rows[[length(rows) + 1]] <- num_row("ROC 曲線下面積", num0(s$auc), vk$auc)
+  do.call(rbind, rows)
+}
 tabs <- list(q1 = p2_numbers_q1(sk$q1), q2 = p2_numbers_q2(sk$q2), q3 = p2_numbers_q3(sk$q3))
+tab_cat <- p2_numbers_cat(r2cat)
+n3_ok <- if (is.null(tab_cat)) 0 else sum(tab_cat$一致 == "✅"); n3_cmp <- if (is.null(tab_cat)) 0 else sum(tab_cat$一致 != "")
 tab_cmp <- p2_numbers_cmp(r2c)
 tab_r2q1 <- if (is.null(r2q1)) NULL else p2_numbers_q1(r2q1)
 jud <- lapply(ids, function(id) p2_judgment(q[[id]], sk[[id]])); names(jud) <- ids
@@ -1017,15 +1085,18 @@ if (n_num_cmp == 0) {
 if (n2_cmp > 0) {
   cat(sprintf("- **模型比較（第二次實測）**：%d 項中有 **%d 項一致**；第二次實測第 1 題的 %d 個數字也有 %d 個一致\n", n2_cmp, n2_ok, n2q1_cmp, n2q1_ok))
 }
+if (n3_cmp > 0) {
+  cat(sprintf("- **重新配適（failures 當類別）**：%d 項中有 **%d 項一致**\n", n3_cmp, n3_ok))
+}
 ```
 :::
 
 ::: {.callout-tip}
 ## 實測結論
 - **模型判斷正確**：三題分別選了二元 logistic、累積 logit、baseline-category logit，和我們依課本做的判斷完全一致；每題都先確認資料是否獨立、成功類別、數字代碼當數值或類別、類別順序、基準類別，才推薦模型
-- **數字正確**：Skill 用 Python（statsmodels）計算，和我們用 R 獨立重算的結果全部一致（第一次 21 項、第二次模型比較 6 項）
+- **數字正確**：Skill 用 Python（statsmodels）計算，和我們用 R 獨立重算的結果全部一致（第一次 21 項、第二次模型比較 6 項、重新配適 `r n3_cmp` 項）
 - **解釋到位**：主動提醒 pass 由期末成績換算，G1–G3 不能當解釋變數；第 2 題比例勝算假設不成立時，說明單一勝算比只代表平均效果，沒有把結果壓成兩類
-- **比人為判斷多走一步**：我們原本認為被當次數當數值比較好；Skill 先提醒等距假設可能不成立，再用模型比較證實當類別明顯較好
+- **比人為判斷多走一步**：我們原本認為被當次數當數值比較好；Skill 先提醒等距假設可能不成立，再用模型比較證實當類別明顯較好；改用類別模型後看出效果集中在「有沒有被當過」
 - **實測帶來的改進**：看圖估讀數字、回覆次數太多、沒辦法檢查等距假設、重複選項被忽略，都是實測時發現、修改後再測一次確認的
 :::
 
@@ -1049,6 +1120,10 @@ if (!is.null(tab_cmp)) {
 if (!is.null(tab_r2q1)) {
   cat("\n\n**第二次實測：第 1 題的數字**\n\n")
   print(knitr::kable(tab_r2q1, row.names = FALSE))
+}
+if (!is.null(tab_cat)) {
+  cat("\n\n**第二次實測：failures 當類別重新配適**\n\n")
+  print(knitr::kable(tab_cat, row.names = FALSE))
 }
 ```
 

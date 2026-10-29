@@ -33,6 +33,19 @@ out$q1_compare <- list(
   AIC_numeric = AIC(fit1), AIC_categorical = AIC(fit1_cat),
   LR = cmp1$Deviance[2], df = cmp1$Df[2], p = cmp1[["Pr(>Chi)"]][2])
 
+# ---- q1 追問之後：以較好的模型（failures 當類別）重新配適 ----
+# 預測機率的條件和 Skill 相同：studytime 固定在平均數，higher、sex 固定在最常見類別（yes、F）
+lr1c <- car::Anova(fit1_cat, type = "II", test.statistic = "LR")
+fit1_null <- glm(pass01 ~ 1, family = binomial, data = d)
+nd1c <- data.frame(studytime = mean(d$studytime), failures = 0:3,
+                   higher = factor("yes", levels = c("no", "yes")), sex = factor("F", levels = c("F", "M")))
+out$q1_cat <- list(
+  odds_ratio = as.list(exp(coef(fit1_cat))),
+  LR = as.list(setNames(lr1c[, "LR Chisq"], rownames(lr1c))),
+  LR_overall = fit1_null$deviance - fit1_cat$deviance,
+  prob_failures = as.list(setNames(predict(fit1_cat, nd1c, type = "response"), paste0("f", 0:3))),
+  auc = as.numeric(pROC::auc(pROC::roc(d$pass01, fitted(fit1_cat), quiet = TRUE, direction = "<"))))
+
 # ---- q2：有序 logistic（累積 logit、比例勝算）----
 # MASS::polr 的參數化是 logit P(Y <= j) = zeta_j - beta * x，beta > 0 表示傾向較高類別
 d$Walc_o <- factor(d$Walc, levels = 1:5, ordered = TRUE)
