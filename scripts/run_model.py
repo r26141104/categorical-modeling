@@ -112,6 +112,28 @@ def natural_levels(values):
     except ValueError:
         return sorted(u)
 
+# 固定的預設值（每個使用者、每次執行都相同；使用者要改才用 --ref、--success、--baseline 指定）
+POSITIVE = ("1", "yes", "y", "true", "pass", "success", "是", "有")
+OTHER = ("other", "others", "其他", "其它")
+
+def default_ref(lv):
+    """類別型解釋變數的參考組：排序後的第一個類別（數字照數值、文字照字母，和 R 相同）。"""
+    return lv[0]
+
+def default_success(lv):
+    """二元結果的成功類別：有 1／yes／pass 等「肯定」的類別就用它，否則用排序後的第二個類別。"""
+    for k in lv:
+        if k.strip().lower() in POSITIVE:
+            return k
+    return lv[1]
+
+def default_baseline(lv):
+    """名目結果的基準類別：有 other／其他 就用它，否則用排序後的最後一個類別（課本的慣例）。"""
+    for k in lv:
+        if k.strip().lower() in OTHER:
+            return k
+    return lv[-1]
+
 def jsonable(o):
     if isinstance(o, dict):
         return {k: jsonable(v) for k, v in o.items()}
@@ -247,6 +269,14 @@ def cmd_describe(a):
             vc = x.map(lambda s: as_str(s) if pd.notna(s) else "NA").value_counts()
             vc = vc.reindex(natural_levels([s for s in vc.index if s != "NA"]) + (["NA"] if "NA" in vc.index else []))
             print("  次數：" + "、".join(f"{i} ({n})" for i, n in vc.items()))
+            lv = natural_levels([s for s in vc.index if s != "NA"])
+            if len(lv) >= 2:
+                dft = [f"當類別型解釋變數時參考組 = {default_ref(lv)}"]
+                if len(lv) == 2:
+                    dft.append(f"當二元結果時成功類別 = {default_success(lv)}")
+                else:
+                    dft.append(f"當名目結果時基準類別 = {default_baseline(lv)}")
+                print("  程式預設：" + "；".join(dft))
         elif num:
             print(f"  範圍 {x.min():.2f} – {x.max():.2f}，平均 {x.mean():.2f}")
     hints = []
@@ -340,7 +370,7 @@ def cmd_logistic(a):
     lv = natural_levels(list(ys.unique()))
     if len(lv) != 2:
         sys.exit(f"{a.y} 有 {len(lv)} 類；二元 logistic 需要剛好 2 類（多類別請用 multinomial 或 ordinal）。")
-    success = a.success if a.success else lv[1]
+    success = a.success if a.success else default_success(lv)
     if success not in lv:
         sys.exit(f"--success 必須是 {a.y} 的類別之一：{'、'.join(lv)}")
     y = (ys == success).astype(float).values
@@ -496,7 +526,7 @@ def cmd_multinomial(a):
     lv = natural_levels(list(ys.unique()))
     if len(lv) < 3:
         sys.exit(f"{a.y} 只有 {len(lv)} 類，請用 logistic。")
-    base = a.baseline if a.baseline else lv[-1]
+    base = a.baseline if a.baseline else default_baseline(lv)
     if base not in lv:
         sys.exit(f"--baseline 必須是 {a.y} 的類別之一：{'、'.join(lv)}")
     order = [base] + [k for k in lv if k != base]          # statsmodels 以第一類（代碼 0）為基準
@@ -675,7 +705,7 @@ def fit_loglik(kind, d, ys, a, x, numeric):
         lv = natural_levels(list(ys.unique()))
         if len(lv) != 2:
             sys.exit(f"{a.y} 有 {len(lv)} 類；logistic 需要剛好 2 類。")
-        success = a.success if a.success else lv[1]
+        success = a.success if a.success else default_success(lv)
         if success not in lv:
             sys.exit(f"--success 必須是 {a.y} 的類別之一：{'、'.join(lv)}")
         y = (ys == success).astype(float).values
@@ -683,7 +713,7 @@ def fit_loglik(kind, d, ys, a, x, numeric):
         return fit_logit(y, X).llf, X.shape[1], des
     if kind == "multinomial":
         lv = natural_levels(list(ys.unique()))
-        base = a.baseline if a.baseline else lv[-1]
+        base = a.baseline if a.baseline else default_baseline(lv)
         if base not in lv:
             sys.exit(f"--baseline 必須是 {a.y} 的類別之一：{'、'.join(lv)}")
         order = [base] + [k for k in lv if k != base]
