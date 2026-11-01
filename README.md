@@ -194,7 +194,7 @@ python scripts/run_model.py report      --out output/q1,output/q1_compare --summ
 | `verify.R`、`verify_results.json` | 用 R（`glm`、`MASS`、`ordinal`、`nnet`）獨立重算的驗證程式與結果 |
 | `skill-test/` | 在 Claude 桌面版新對話中實測本 Skill 的輸出：三題的 `result.json`、圖、確認問題截圖、完整對話紀錄 `transcript.md` |
 | `skill-test/round2/` | 第二次實測（確認清單、模型比較、產生報告）：`result.json`、Skill 產生的 `report.html`、截圖、對話紀錄 |
-| `skill-test/round3/` | 第三次實測（改版後的決策樹與工作模式）：測試紀錄 `record.md`、截圖 |
+| `skill-test/round3/` | 第三次實測（改版後的決策樹、工作模式、選擇題）：測試紀錄 `record.md`、對話紀錄 `transcript.md`、截圖 |
 | `ai-log.csv` | 製作過程的 AI 使用紀錄 |
 
 **實測結果**：三題（二元、有序、名目結果）Skill 選的模型都和人為判斷一致；21 項數字和 R 驗證程式全部一致。
