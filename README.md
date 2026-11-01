@@ -8,8 +8,7 @@
 
 | 線上看（不用下載） | |
 |---|---|
-| 📘 [Part 2 報告](https://r26141104.github.io/categorical-modeling/report/modeling.html) | 方法、Skill 介紹、三次實測結果（**從這裡開始看**） |
-| 🧭 [Skill 介紹](https://r26141104.github.io/categorical-modeling/skill-overview.html) | 檔案結構與每個檔案的功能 |
+| 📘 [Part 2 報告](https://r26141104.github.io/categorical-modeling/report/modeling.html) | 方法、Skill 介紹（檔案結構與每個檔案的功能）、三次實測結果（**從這裡開始看**） |
 | 🛠️ [製作教學](https://r26141104.github.io/categorical-modeling/make-skill-tutorial.html) | 規劃、撰寫、測試、修改的完整過程 |
 | 🤖 [AI 使用紀錄](https://r26141104.github.io/categorical-modeling/report/ai-usage.html) | 製作過程中使用 AI 的紀錄 |
 
@@ -135,7 +134,6 @@ categorical-modeling/
 ├── categorical-modeling.zip    打包好的 Skill，可直接上傳到 Claude
 │
 │  ── 說明網頁 ──
-├── skill-overview.qmd / .html       Skill 介紹
 ├── make-skill-tutorial.qmd / .html  製作教學
 ├── _nav/                            各網頁上方的導覽列
 │
