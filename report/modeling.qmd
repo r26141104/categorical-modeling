@@ -1,13 +1,33 @@
 ---
 title: "Part 2：用 Skill 分析類別結果"
 subtitle: "Modeling Categorical Outcomes"
+author: "林才榆"
+lang: zh-TW
 number-sections: true
 toc-depth: 2
+format:
+  html:
+    toc: true
+    toc-title: 目錄
+    embed-resources: true
+    theme: cosmo
+    include-before-body: ../_nav/nav-modeling.html
+    include-in-header:
+      text: |
+        <style>
+        h2 { margin-top: 2.2rem; }
+        .callout { font-size: 1rem; }
+        table { font-size: 0.95rem; }
+        </style>
 ---
 
 ```{r}
 #| include: false
-source("_common.R")
+# 共用設定：數字格式、圖的字型
+knitr::opts_chunk$set(message = FALSE, warning = FALSE, fig.align = "center", dev = "png", dev.args = list(type = "cairo"))
+ggplot2::theme_set(ggplot2::theme_minimal(base_size = 13, base_family = "Noto Sans CJK TC"))
+fmt_num <- function(x, digits = 2) formatC(as.numeric(x), format = "f", digits = digits)
+fmt_p <- function(p, digits = 3) formatC(as.numeric(p), format = "f", digits = digits)
 library(VGAM)
 
 # 內部註記（不顯示在頁面）：
@@ -15,8 +35,8 @@ library(VGAM)
 #     GLM 的三個成分與 MLE §3.1、§3.5（A）；適合度 §5.2、完全分離 §5.3、樣本數 §5.1.1（A）
 #   2 baseline-category logit §6.1（A）
 #   3 累積 logit §6.2（A）、比例勝算檢查 §6.3.2（A/B）
-#   Skill：Part 2 專屬的 categorical-modeling（另存於「俊逸skill」資料夾），架構參考同學已報告過的 Skill
-#   實測輸出：demo/part2/skill/qN/result.json（第一次）、demo/part2/skill/round2/（第二次：compare、report）；驗證：demo/part2/verify_results.json
+#   Skill：categorical-modeling
+#   實測輸出：skill-test/qN/result.json（第一次）、skill-test/round2/（第二次：compare、report）、skill-test/round3/（第三次：改版後的行為，截圖與紀錄）；驗證：verify_results.json
 #   模型比較：§4.3（數值分數 vs 類別）、§5.1（AIC）、§5.2（巢狀模型的 LR 檢定）（A）
 
 .blank <- function(x) is.null(x) || length(x) == 0 || (length(x) == 1 && (is.na(x) || x == ""))
@@ -24,21 +44,21 @@ library(VGAM)
 .num <- function(x) if (abs(x) < 1e-3 && x != 0) formatC(x, digits = 3, format = "e") else formatC(x, digits = 4, format = "f")
 ptxt <- function(p) if (p < 0.001) "< 0.001" else paste("=", fmt_p(p))
 
-judg <- yaml::read_yaml("demo/part2/judgment.yml")
+judg <- yaml::read_yaml("judgment.yml")
 q <- setNames(judg$questions, vapply(judg$questions, `[[`, "", "id"))
-v <- jsonlite::read_json("demo/part2/verify_results.json", simplifyVector = TRUE)
+v <- jsonlite::read_json("verify_results.json", simplifyVector = TRUE)
 ids <- c("q1", "q2", "q3")              # 第一次實測的三題；q1_compare 是第二次實測的追問
 sk <- lapply(ids, function(id) {
-  f <- file.path("demo/part2/skill", id, "result.json")
+  f <- file.path("skill-test", id, "result.json")
   if (file.exists(f)) jsonlite::read_json(f, simplifyVector = TRUE) else NULL
 })
 names(sk) <- ids
 rd <- function(f) if (file.exists(f)) jsonlite::read_json(f, simplifyVector = TRUE) else NULL
-r2q1 <- rd("demo/part2/skill/round2/q1/result.json")          # 第二次實測（新版 Skill）
-r2c <- rd("demo/part2/skill/round2/q1_compare/result.json")
-r2cat <- rd("demo/part2/skill/round2/q1_cat/result.json")     # 比較之後，用 failures 當類別重新配適
+r2q1 <- rd("skill-test/round2/q1/result.json")          # 第二次實測（新版 Skill）
+r2c <- rd("skill-test/round2/q1_compare/result.json")
+r2cat <- rd("skill-test/round2/q1_cat/result.json")     # 比較之後，用 failures 當類別重新配適
 skill_plot <- function(id, name) {
-  f <- file.path("demo/part2/skill", id, paste0(name, ".png"))
+  f <- file.path("skill-test", id, paste0(name, ".png"))
   if (!is.null(sk[[id]]) && file.exists(f)) f else NULL
 }
 ```
@@ -108,7 +128,7 @@ logit 把 $(0, 1)$ 的機率對應到整條實數線，所以不論 $x$ 多大�
 
 **假設（Assumption）**
 
-1. 觀察值 $Y_1, \dots, Y_n$ 彼此**獨立**（同一個體有多筆資料時不成立，見 Part 3）。
+1. 觀察值 $Y_1, \dots, Y_n$ 彼此**獨立**（同一個體有多筆資料時不成立，需要 GEE、GLMM 等方法，Agresti Ch.8–10）。
 2. 給定 $x_i$，$Y_i$ 服從 Bernoulli 分配，成功機率為 $\pi(x_i)$。
 3. $\text{logit}[\pi(x)]$ 是 $x$ 的**線性**函數。
 4. 推論採**大樣本**近似：樣本數相對於參數個數要夠大，且資料沒有**完全分離**（見下方「模型檢查」）。
@@ -549,7 +569,7 @@ c(LR = LR_po, df = df_po, P = pchisq(LR_po, df_po, lower.tail = FALSE))
 | 兩類 | 二元 logistic 迴歸 | 1 | 1 |
 | $J$ 類，沒有順序 | baseline-category logit | $J-1$ | $J-1$ |
 | $J$ 類，有順序 | 累積 logit（比例勝算） | 1 | 1 |
-| 同一個體有多筆資料 | 以上模型都不適用 → Part 3 | | |
+| 同一個體有多筆資料 | 以上模型都不適用 → GEE、GLMM 等方法（Ch.8–10） | | |
 
 # Skill 介紹：categorical-modeling
 
@@ -559,13 +579,14 @@ c(LR = LR_po, df = df_po, P = pchisq(LR_po, df_po, lower.tail = FALSE))
 
 ```{mermaid}
 flowchart LR
-  A[描述資料<br/>＋確認清單] --> B{使用者回覆}
+  A[描述資料<br/>＋確認清單] --> B{使用者點選<br/>下一步}
   B -->|先畫圖| P[畫圖<br/>印出實際比例]
   P --> B
-  B -->|照預設／改設定| E[Python 配適模型<br/>run_model.py]
+  B -->|照預設配適（推薦）| E[Python 配適模型<br/>run_model.py]
   E --> F[白話解釋<br/>＋注意事項]
-  F -->|需要時| G[比較兩個模型]
-  F -->|需要時| H[產生 HTML 報告]
+  F --> C{使用者點選<br/>下一步}
+  C -->|比較模型| G[比較兩個模型]
+  C -->|產生報告| H[產生 HTML 報告]
   G --> H
 ```
 
@@ -583,9 +604,17 @@ flowchart LR
 ## 行為規則（最優先）
 1. **未經使用者明確同意，不畫圖、不配適、不比較模型、不產生報告**
 2. 資料是否獨立**一定讓使用者確認**（資料本身看不出來）
-3. 每則訊息結尾都寫清楚「回覆什麼就會做什麼」
+3. 每則訊息結尾都用**選擇題**列出下一步，推薦的選項放第一個並標「（推薦）」；使用者選了才算同意
 4. **所有數字都由程式計算**，Claude 不能心算、修改數字，也不能從圖上估讀
 :::
+
+Skill 也會先判斷使用者要的是哪一種工作模式，不會每次都從頭走完：
+
+| 工作模式 | 例子 | Skill 怎麼做 |
+|---|---|---|
+| 完整分析 | 上傳資料，問「哪些因素會影響是否及格？」 | 從描述資料、確認清單一路做到解釋結果 |
+| 只問概念 | 「比例勝算假設是什麼？」 | 直接回答並附課本節號，不跑分析流程 |
+| 接續分析 | 配適完後說「sex 的參考組改成 M」 | 已確認的設定不重問，只重新確認改動的部分 |
 
 ## 檔案結構（File Structure）
 
@@ -597,21 +626,21 @@ categorical-modeling/
 ├── references/
 │   ├── methods.md              <- 速查：三個模型＋模型比較的 H0、統計量、效果量
 │   ├── textbook-methods.md     <- 課本細節：假設、公式、注意事項
-│   └── decision-tree.md        <- 選模型的決策樹、配適後建議的比較
+│   └── decision-tree.md        <- 選模型的決策樹、協助使用者判斷、配適後建議的比較
 ├── scripts/
 │   └── run_model.py            <- 實際計算（statsmodels）＋畫圖＋比較模型＋產生報告
 ├── data/                       <- 範例資料（馬蹄蟹、鱷魚、高中生）
-├── decision-tree.png           <- 決策樹圖
-├── README.md                   <- 安裝與使用說明
-└── skill-overview.qmd          <- Skill 介紹頁
+└── decision-tree.png           <- 決策樹圖
 ```
+
+安裝與使用說明（`README.md`）、Skill 介紹頁、製作教學放在 GitHub repo，不放進上傳給 Claude 的 ZIP。
 
 | 檔案 | 用途 |
 |---|---|
 | `SKILL.md` | 定義 Skill 什麼時候啟動、涵蓋範圍、行為規則、六步驟流程、怎麼解釋每個模型的結果 |
 | `methods.md` | 一頁速查：模型式、$H_0$、統計量、勝算比怎麼解釋、對應的指令 |
 | `textbook-methods.md` | 最深的一層：完整假設、估計與推論、模型檢查、模型比較、常見誤解，附 Agresti 節號 |
-| `decision-tree.md` | 幫 Claude 決定用哪個模型、還要問使用者哪些設定、配適後建議做哪些比較 |
+| `decision-tree.md` | 幫 Claude 決定用哪個模型、還要問使用者哪些設定；使用者不確定時用例子協助判斷，並附上每個判斷的理論依據；配適後依警告代碼建議做哪些比較 |
 | `run_model.py` | 被執行的程式（Python）：描述資料、畫圖、配適與比較模型、產生報告 |
 
 ## 怎麼使用？
@@ -628,7 +657,17 @@ categorical-modeling/
 
 先確認資料**是否獨立**、結果變數**是什麼型態**，再依「幾類、有沒有順序」選模型，最後確認模型設定：
 
-![選模型的決策樹（decision-tree.png）](demo/part2/decision-tree.png){width=45%}
+![選模型的決策樹（decision-tree.png）](../decision-tree.png){width=45%}
+
+圖只畫主幹。使用者不確定時（例如不知道結果有沒有順序、資料算不算獨立），Skill 不會要使用者回答術語，而是**用例子協助判斷**，並說明背後的理由，例如：
+
+| 判斷 | Skill 怎麼協助 | 背後的理由 |
+|---|---|---|
+| 結果有沒有順序？ | 問「能不能說 1 < 2 < 3？把兩類對調，意思會不會變？」 | 有序結果用累積 logit，每個解釋變數只要 1 個參數，比 baseline-category logit 的 $J-1$ 個簡潔（§6.2） |
+| 資料獨立嗎？ | 舉例：同一人前後測、同一學生兩科、同校同班 | 三個模型的概似函數都是「每一列機率相乘」；不獨立會低估標準誤，P 值偏小（§1.1.3） |
+| 數字代碼當數值或類別？ | 說明兩者的參數個數與假設，建議之後用 `compare` 檢查 | 數值分數是類別模型的特例，可以用概似比檢定比較（§4.3） |
+
+每一步的細節、理論與範圍外的處理，都寫在 `decision-tree.md`。
 
 ## 一則訊息確認所有設定
 
@@ -645,13 +684,34 @@ categorical-modeling/
 
 ④⑤ 的預設值是程式固定的：參考組是排序後的第一類，成功類別是 1／yes／pass 這類肯定的類別，基準類別是 other（沒有就用最後一類）。所以不同的人用同一份資料，基準都一樣，結果可以互相對照。
 
-使用者只要回覆「**照預設**」就開始計算；要改設定，只寫編號和新設定，例如「③ failures 改當類別」。
+清單後面接著一題**選擇題**：使用者只要點選「**照預設配適（推薦）**」就開始計算；要改設定，選「其他」寫編號和新設定，例如「③ failures 改當類別」。
 
 ```{r}
 #| echo: false
 #| results: asis
-f <- "demo/part2/skill/round2/screenshots/checklist.png"
+f <- "skill-test/round2/screenshots/checklist.png"
 if (file.exists(f)) cat(sprintf("::: {.callout-note collapse=\"true\"}\n## 實際畫面：Skill 的確認清單（點開查看）\n![](%s){width=85%%}\n:::\n", f))
+```
+
+## 用選擇題決定下一步
+
+每則回覆的結尾都是一題選擇題，推薦的選項放在第一個並標「（推薦）」。推薦哪一個依固定規則，不憑 Claude 的喜好。例如解釋完結果後，依序取第一個符合的：
+
+| 情況 | 推薦的下一步 |
+|---|---|
+| 有變數當數值分數，或出現 `GOF_NOTE` | 比較「當數值 vs 當類別」 |
+| 出現 `PO_VIOLATED`（比例勝算假設不成立） | 配適 baseline-category logit 當對照 |
+| 有變數的概似比檢定不顯著 | 比較「拿掉這個變數」 |
+| 以上都沒有 | 產生報告 |
+
+選了某個選項，才算同意做那件事；其他選項只是建議，不會自動執行。
+
+```{r}
+#| echo: false
+#| results: asis
+f <- c("skill-test/round3/screenshots/step5-choice-checklist.png", "skill-test/round3/screenshots/step5-choice-next.png")
+f <- f[file.exists(f)]
+if (length(f) > 0) cat("::: {.callout-note collapse=\"true\"}\n## 實際畫面：結尾的選擇題（點開查看）\n", paste(sprintf("![](%s){width=85%%}", f), collapse = "\n\n"), "\n:::\n", sep = "")
 ```
 
 ## 它會算出什麼、提醒什麼？
@@ -683,16 +743,16 @@ if (file.exists(f)) cat(sprintf("::: {.callout-note collapse=\"true\"}\n## 實�
 | 假設 | 每增加一級，效果都相同（等距） | 不做等距假設，每一級各自估計 |
 | 解釋 | 「每多被當一次，勝算乘以 …」 | 「被當 1 次 vs 0 次、2 次 vs 0 次……」 |
 
-數值分數模型是類別模型的**特例**（巢狀），所以可以用**概似比檢定**比較：$H_0$ 是「較簡單的數值模型就夠了」。$P$ 小代表類別模型明顯較好，也就是等距假設不成立。Skill 在配適完會主動**建議**做這個比較，但要使用者同意才執行。比較完後，Skill 不會自動改用較好的模型；要用較好的設定重新配適，才會得到它的勝算比和預測機率。
+數值分數模型是類別模型的**特例**（巢狀），所以可以用**概似比檢定**比較：$H_0$ 是「較簡單的數值模型就夠了」。$P$ 小代表類別模型明顯較好，也就是等距假設不成立。Skill 在配適完會主動**建議**做這個比較（在選擇題中標為推薦），但要使用者選了才執行。比較完後，Skill 不會自動改用較好的模型；要用較好的設定重新配適，才會得到它的勝算比和預測機率。
 
 ## 產生分析報告
 
-分析做完，回覆「**產生報告**」，Skill 會先寫一段白話的結論摘要（只能用程式算出的數字），再用 `report` 指令把所有結果整理成一份 HTML 報告，可以下載、用瀏覽器打開或列印成 PDF。
+分析做完，點選「**產生報告**」，Skill 會先寫一段白話的結論摘要（只能用程式算出的數字），再用 `report` 指令把所有結果整理成一份 HTML 報告，可以下載、用瀏覽器打開或列印成 PDF。
 
 ```{r}
 #| echo: false
 #| results: asis
-f <- "demo/part2/skill/round2/screenshots/report-top.png"
+f <- "skill-test/round2/screenshots/report-top.png"
 if (file.exists(f)) cat(sprintf("::: {.callout-note collapse=\"true\"}\n## 實際畫面：Skill 產生的報告（點開查看）\n![](%s){width=85%%}\n:::\n", f))
 ```
 
@@ -729,9 +789,9 @@ flowchart LR
 
 ## 實測後的改進
 
-做好 Skill 不等於能用。每次實測都會發現問題，修改後再測一次：
+做好 Skill 不等於能用。每次實測，或和同學的 Skill 對照，都會發現可以改進的地方，修改後再測一次：
 
-| 實測發現的問題 | 原因 | 改進 |
+| 發現的問題 | 原因 | 改進 |
 |---|---|---|
 | 完全分離的資料讓程式當掉 | 勝算比 $e^{\beta}$ 數值溢位 | 改用安全的指數函式，並發出 `SEPARATION` 警告 |
 | Skill 從長條圖「估讀」各組比例 | `plot` 只輸出圖檔，Claude 手上沒有數字 | `plot` 同時印出實際比例；`SKILL.md` 規定只能引用印出的數字 |
@@ -740,6 +800,9 @@ flowchart LR
 | 分析結果散在對話裡，不方便交給別人 | 沒有整理輸出的工具 | 新增 `report` 指令，產生 HTML 報告 |
 | 同一個選項給兩次（`--ref higher=no --ref sex=F`）只保留最後一個 | 程式讀取選項的方式 | 重複的選項全部合併；用同一個指令重跑，結果不變 |
 | 練習時重跑選校原因，基準類別變成 course（正式實測是 other），勝算比和報告頁對不上 | 參考組、基準類別由 Claude 自己挑，每次可能不同 | 程式固定預設（參考組 = 第一類；成功類別 = 1／yes／pass；基準類別 = other，沒有就用最後一類），`describe` 印出預設，`SKILL.md` 規定照抄；每個人的結果都相同 |
+| 使用者不確定結果有沒有順序、資料算不算獨立時，Skill 沒有協助的方法 | `decision-tree.md` 只有決策樹，沒有例子和理由 | 決策樹補上用例子協助判斷的表格、每個判斷的理論依據、警告代碼的處理；流程圖整理成只畫主幹 |
+| 每一步都要自己打字回覆，也不知道哪個下一步比較好 | 結尾只用文字列出選項 | 結尾改用**選擇題**，推薦的選項放第一個並標「（推薦）」，推薦依固定規則 |
+| 只問一個概念或改一個設定，也要從頭走一遍 | 只有一種完整流程 | 新增三種工作模式：完整分析、只問概念、接續分析 |
 
 完整的製作過程（每個檔案怎麼寫、怎麼測試）見 `make-skill-tutorial.html`。
 
@@ -747,22 +810,22 @@ flowchart LR
 
 ::: {.callout-tip}
 ## 情境
-649 位葡萄牙高中生的資料（和 Part 1 同一份）。用三個問題測試 Skill：結果兩類、結果有序、結果名目，各需要不同的模型。
+649 位葡萄牙高中生的資料（UCI 學生成績資料）。用三個問題測試 Skill：結果兩類、結果有序、結果名目，各需要不同的模型。
 :::
 
-**第一次實測**：在 Claude App 上傳 Skill 後，開一個**新的對話**（看不到我們的判斷和驗證結果），上傳資料檔，像一般使用者一樣提問，例如：
+**第一次實測**：在 Claude App 上傳 Skill 後，開一個**新的對話**（看不到我的判斷和驗證結果），上傳資料檔，像一般使用者一樣提問，例如：
 
 > 用 categorical-modeling skill 分析 student_por.csv：讀書時間、被當次數、想不想讀大學、性別，哪些會影響是否及格？
 
 ```{r}
 #| echo: false
 #| results: asis
-shot <- list.files("demo/part2/skill/screenshots", pattern = "\\.png$", full.names = TRUE)
+shot <- list.files("skill-test/screenshots", pattern = "\\.png$", full.names = TRUE)
 if (length(shot) > 0) {
   cat(sprintf("Skill 不會直接計算，**會先描述資料、跟你確認**：\n\n![Skill 的確認問題](%s)\n\n", shot[1]))
 }
 if (all(vapply(sk, is.null, logical(1)))) {
-  cat("::: {.callout-note}\n## 尚未實測\n完成 Skill 實測、把輸出放進 `demo/part2/skill/` 後，這一段會自動顯示結果與比對表。\n:::\n")
+  cat("::: {.callout-note}\n## 尚未實測\n完成 Skill 實測、把輸出放進 `skill-test/` 後，這一段會自動顯示結果與比對表。\n:::\n")
 }
 ```
 
@@ -879,8 +942,8 @@ h <- q$q1_compare$judgment
 if (!is.null(h) && !is.null(r2c)) {
   skill_choice <- if (r2c$lr_test$p < 0.05) "categorical" else "numeric"
   zh <- c(numeric = "當數值", categorical = "當類別")
-  cat("::: {.callout-note}\n## 我們的判斷 vs 資料的檢定結果\n")
-  cat(sprintf("- **實測前我們的判斷**：%s。理由：%s\n", zh[[h$choice]], h$reason))
+  cat("::: {.callout-note}\n## 我的判斷 vs 資料的檢定結果\n")
+  cat(sprintf("- **實測前我的判斷**：%s。理由：%s\n", zh[[h$choice]], h$reason))
   cat(sprintf("- **Skill 用資料檢定的結果**：%s比較好（$P %s$）\n", zh[[skill_choice]], ptxt(r2c$lr_test$p)))
   if (h$choice == skill_choice) {
     cat("- 兩者一致。\n")
@@ -934,12 +997,41 @@ if (!is.null(r2cat)) {
 
 ::: {.callout-note collapse="true"}
 ## 實際畫面：重新配適的結果與報告（點開查看）
-![](demo/part2/skill/round2/screenshots/refit-results.png){width=85%}
+![](skill-test/round2/screenshots/refit-results.png){width=85%}
 
-![](demo/part2/skill/round2/screenshots/report-compare.png){width=85%}
+![](skill-test/round2/screenshots/report-compare.png){width=85%}
 
-![](demo/part2/skill/round2/screenshots/report-refit.png){width=85%}
+![](skill-test/round2/screenshots/report-refit.png){width=85%}
 :::
+
+## 第三次實測：改版後的行為
+
+改版（決策樹補上協助判斷與理論、三種工作模式、結尾改用選擇題）之後，我上傳新的 Skill，在**新對話**用第 2 題的資料再測一次。這次刻意扮演不確定的使用者：
+
+> 男生和女生的週末飲酒量（Walc）有沒有差別？但我不確定 Walc 算不算有順序。
+
+| 測試 | 檢查什麼 | 結果 |
+|---|---|---|
+| 1. 不確定順序 | 用例子協助判斷 Walc 有順序、建議累積 logit；主動提醒資料來自兩所學校，同校學生可能不獨立 | ✅ |
+| 2. 照預設配適 | 數字和第一次實測相同；`PO_VIOLATED` 時不把結果壓成兩類，並建議用 baseline-category logit 當對照 | ✅ |
+| 3. 接續分析 | 改「sex 的參考組改成 M」時不重問已確認的設定；勝算比變成倒數，概似比檢定與預測機率不變 | ✅ |
+| 4. 不獨立的資料 | 問「同一學生的數學、葡文成績各占一列」時，判定範圍外、說明理由、建議 GEE／GLMM，不配適 | ✅ |
+| 5. 選擇題 | 確認清單後推薦「照預設配適」；結果解釋完，因為 `PO_VIOLATED` 而推薦「配適 multinomial 當對照」 | ✅ |
+
+::: {.callout-tip}
+## 換參考組驗證「只改比較方向」
+- 參考組 F（男 vs 女）：落在較高飲酒等級的勝算比 3.127（95% CI 2.330 – 4.196）
+- 參考組 M（女 vs 男）：勝算比 0.320（95% CI 0.238 – 0.429），正好是 3.127 的倒數
+- 兩次的概似比檢定（LR = 59.36）、比例勝算檢定（LR = 17.21）和預測機率完全相同，也和第一次實測第 2 題一致
+:::
+
+```{r}
+#| echo: false
+#| results: asis
+f <- file.path("skill-test/round3/screenshots", c("step1-order.png", "step1-checklist.png", "step2-next.png", "step3-refit.png", "step4-scope.png"))
+f <- f[file.exists(f)]
+if (length(f) > 0) cat("::: {.callout-note collapse=\"true\"}\n## 實際畫面：第三次實測（點開查看）\n", paste(sprintf("![](%s){width=85%%}", f), collapse = "\n\n"), "\n:::\n", sep = "")
+```
 
 ```{r}
 #| include: false
@@ -1071,14 +1163,14 @@ n2q1_ok <- if (is.null(tab_r2q1)) 0 else sum(tab_r2q1$一致 == "✅"); n2q1_cmp
 ```
 
 ::: {.callout-important}
-## 我們怎麼確認 Skill 是對的？
+## 我怎麼確認 Skill 是對的？
 ```{r}
 #| echo: false
 #| results: asis
 if (n_method_cmp == 0) {
-  cat("- **選的模型**：Skill 實測完成後，這裡會顯示和我們判斷的比對結果\n")
+  cat("- **選的模型**：Skill 實測完成後，這裡會顯示和我判斷的比對結果\n")
 } else {
-  cat(sprintf("- **選的模型**：和我們依課本做的判斷，%d 題中有 **%d 題一樣**\n", n_method_cmp, n_method_same))
+  cat(sprintf("- **選的模型**：和我依課本做的判斷，%d 題中有 **%d 題一樣**\n", n_method_cmp, n_method_same))
 }
 if (n_num_cmp == 0) {
   cat("- **算出的數字**：Skill 實測完成後，會和獨立的 R 程式重算的結果比對\n")
@@ -1096,11 +1188,12 @@ if (n3_cmp > 0) {
 
 ::: {.callout-tip}
 ## 實測結論
-- **模型判斷正確**：三題分別選了二元 logistic、累積 logit、baseline-category logit，和我們依課本做的判斷完全一致；每題都先確認資料是否獨立、成功類別、數字代碼當數值或類別、類別順序、基準類別，才推薦模型
-- **數字正確**：Skill 用 Python（statsmodels）計算，和我們用 R 獨立重算的結果全部一致（第一次 21 項、第二次模型比較 6 項、重新配適 `r n3_cmp` 項）
+- **模型判斷正確**：三題分別選了二元 logistic、累積 logit、baseline-category logit，和我依課本做的判斷完全一致；每題都先確認資料是否獨立、成功類別、數字代碼當數值或類別、類別順序、基準類別，才推薦模型
+- **數字正確**：Skill 用 Python（statsmodels）計算，和我用 R 獨立重算的結果全部一致（第一次 21 項、第二次模型比較 6 項、重新配適 `r n3_cmp` 項）
 - **解釋到位**：主動提醒 pass 由期末成績換算，G1–G3 不能當解釋變數；第 2 題比例勝算假設不成立時，說明單一勝算比只代表平均效果，沒有把結果壓成兩類
-- **比人為判斷多走一步**：我們原本認為被當次數當數值比較好；Skill 先提醒等距假設可能不成立，再用模型比較證實當類別明顯較好；改用類別模型後看出效果集中在「有沒有被當過」
+- **比人為判斷多走一步**：我原本認為被當次數當數值比較好；Skill 先提醒等距假設可能不成立，再用模型比較證實當類別明顯較好；改用類別模型後看出效果集中在「有沒有被當過」
 - **實測帶來的改進**：看圖估讀數字、回覆次數太多、沒辦法檢查等距假設、重複選項被忽略，都是實測時發現、修改後再測一次確認的
+- **改版後再測一次**：第三次實測的 5 個測試全部符合預期（協助判斷順序、提醒同校資料、`PO_VIOLATED` 建議對照模型、接續分析不重問、不獨立就停止、選擇題標出推薦），數字和第一次實測完全相同
 :::
 
 ::: {.callout-note collapse="true"}
@@ -1111,7 +1204,7 @@ if (n3_cmp > 0) {
 #| results: asis
 for (id in ids) {
   cat("\n\n**", q[[id]]$question, "**\n\n", sep = "")
-  cat("判斷比對（我們 vs Skill）\n\n")
+  cat("判斷比對（我 vs Skill）\n\n")
   print(knitr::kable(jud[[id]], row.names = FALSE))
   cat("\n\n數字比對（Skill vs 獨立驗證程式）\n\n")
   print(knitr::kable(tabs[[id]], row.names = FALSE))
@@ -1130,9 +1223,9 @@ if (!is.null(tab_cat)) {
 }
 ```
 
-- 實測在新的 Claude 對話中進行，只上傳 Skill 和資料，看不到我們的判斷和驗證結果
+- 實測在新的 Claude 對話中進行，只上傳 Skill 和資料，看不到我的判斷和驗證結果
 - 驗證程式用課本示範的 R 指令（`glm`、`anova`、`MASS`、`ordinal`、`nnet`），Skill 用 Python 的 statsmodels：兩邊是不同語言、不同套件，各自獨立計算
-- 資料結構與變數型態是 Skill 在對話中和使用者確認的，詳見對話紀錄（`demo/part2/skill/transcript.md`、`demo/part2/skill/round2/transcript.md`）
+- 資料結構與變數型態是 Skill 在對話中和使用者確認的，詳見對話紀錄（`skill-test/transcript.md`、`skill-test/round2/transcript.md`、`skill-test/round3/transcript.md`）
 :::
 
 # 重點整理
@@ -1143,12 +1236,12 @@ if (!is.null(tab_cat)) {
 | Skill 能做什麼 | 選模型、配適、白話解釋，還能比較兩個模型、產生 HTML 報告 |
 | Skill 的分工 | Claude 判斷、確認、解釋；程式（Python）負責所有計算 |
 | Skill 的結構 | `SKILL.md`（規則與流程）＋ `references/`（速查、課本細節、決策樹）＋ `scripts/run_model.py`（計算、比較、報告） |
-| Skill 的特色 | 一則確認清單、未經同意不計算；每個方法都有課本依據；主動提醒分離、樣本數、比例勝算、等距假設等問題 |
-| 怎麼確認 Skill 是對的 | 和我們依課本做的判斷比對，數字用另一套獨立的 R 程式重算；實測發現的問題修改後再測一次 |
+| Skill 的特色 | 一則確認清單、結尾用選擇題標出推薦、未經同意不計算；使用者不確定時用例子協助判斷；每個方法都有課本依據；主動提醒分離、樣本數、比例勝算、等距假設等問題 |
+| 怎麼確認 Skill 是對的 | 和我依課本做的判斷比對，數字用另一套獨立的 R 程式重算；實測發現的問題修改後再測一次 |
 
 ::: {.callout-tip}
 ## 下一步
-以上都假設**每筆資料彼此獨立**。同一個學生考兩次、同一班的學生互相影響時，要用 Part 3 的方法。
+以上都假設**每筆資料彼此獨立**。同一個學生考兩次、同一班的學生互相影響時，要改用 GEE、GLMM 等考慮相關性的方法（Agresti Ch.8–10）。
 :::
 
 # 參考文獻 {.unnumbered}

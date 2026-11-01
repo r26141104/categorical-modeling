@@ -1,14 +1,14 @@
 # Part 2：獨立驗證計算
 #
-# 用來核對 Skill 在真實資料上的數字。刻意「不使用」本專案 R/ 資料夾的任何函式，
-# 並盡量用和 Skill 不同的套件計算（Skill 用 VGAM；這裡用 MASS、ordinal、nnet）。
+# 用來核對 Skill 在真實資料上的數字。刻意「不使用」Skill 的程式（run_model.py），
+# 改用 R 和不同的套件獨立計算（這裡用 glm、MASS、ordinal、nnet）。
 # 設定（例如 studytime 當數值或類別、基準類別）要和 Skill 實測時使用者的回答一致；
-# 實測後若設定不同，請依 spec.json 調整這裡再重跑。
+# 實測後若設定不同，請調整這裡再重跑。
 #
-# 執行（在專案根目錄）：Rscript demo/part2/verify.R
-# 輸出：demo/part2/verify_results.json
+# 執行（在 report/ 資料夾）：Rscript verify.R
+# 輸出：report/verify_results.json
 
-d <- read.csv("data/uci-student/student_por.csv")
+d <- read.csv("../data/student_por.csv")
 out <- list()
 
 # ---- q1：二元 logistic（studytime 當數值分數；higher、sex 為類別）----
@@ -74,5 +74,5 @@ out$q3 <- list(
   LR_address = deviance(fit3_a) - deviance(fit3),
   LR_school = deviance(fit3_s) - deviance(fit3))
 
-jsonlite::write_json(out, "demo/part2/verify_results.json", auto_unbox = TRUE, digits = NA, pretty = TRUE)
+jsonlite::write_json(out, "verify_results.json", auto_unbox = TRUE, digits = NA, pretty = TRUE)
 str(out, give.attr = FALSE)

@@ -183,12 +183,13 @@ python scripts/run_model.py report      --out output/q1,output/q1_compare --summ
 
 **從 `report/modeling.html` 開始看**：上方選單可以切換到 Skill 介紹、製作教學、AI 使用紀錄。
 
-本 Skill 是「類別資料分析」課程分組報告中 **Part 2：Modeling Categorical Outcomes** 的作品。
+本 Skill 是「類別資料分析」課程報告 **Part 2：Modeling Categorical Outcomes** 的作品。
 
 | 檔案 | 內容 |
 |---|---|
 | `modeling.html` | Part 2 報告網頁（單一檔案，下載後用瀏覽器打開即可） |
-| `modeling.qmd` | 網頁原始檔（需搭配小組專案的共用程式才能重新產生） |
+| `modeling.qmd` | 網頁原始檔，可以獨立重新產生（需要 R 與 VGAM、car、pROC、ggplot2、yaml、jsonlite 套件）：在 `report/` 資料夾執行 `quarto render modeling.qmd` |
+| `data/agresti/` | 報告中課本例題用的資料（Crabs、Alligators、Polviews，取自 Agresti 官方資料集） |
 | `ai-usage.qmd`、`ai-usage.html` | AI 使用紀錄頁（由 `ai-log.csv` 整理） |
 | `judgment.yml` | 實測前依課本做的人為判斷：每題的資料結構、變數型態、模型與理由 |
 | `verify.R`、`verify_results.json` | 用 R（`glm`、`MASS`、`ordinal`、`nnet`）獨立重算的驗證程式與結果 |

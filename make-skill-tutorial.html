@@ -5377,7 +5377,7 @@ z-index: 1000;
 <section id="skill-是什麼" class="level1" data-number="1">
 <h1 data-number="1"><span class="header-section-number">1</span> Skill 是什麼</h1>
 <p>Skill 是一個資料夾，裡面放著「教 Claude 怎麼做某件事」的說明文件與程式。把資料夾壓成 zip 上傳到 Claude App 之後，Claude 在對話中碰到相關的需求，就會自動讀取這份說明並照著做。</p>
-<p>一般對話中，Claude 會用自己的方式回答：自己挑模型、自己決定要不要畫圖、甚至自己估算數字。Skill 的用途是<strong>把做法固定下來</strong>。在本例中，我們要求 Claude：</p>
+<p>一般對話中，Claude 會用自己的方式回答：自己挑模型、自己決定要不要畫圖、甚至自己估算數字。Skill 的用途是<strong>把做法固定下來</strong>。在本例中，我要求 Claude：</p>
 <ul>
 <li>先問清楚資料結構與變數型態，<strong>不自己替使用者決定</strong></li>
 <li>只在三個類別結果模型中選擇，範圍外的問題要明說</li>
@@ -5539,7 +5539,7 @@ z-index: 1000;
 <h2 data-number="3.1" class="anchored" data-anchor-id="步驟一規劃範圍與流程"><span class="header-section-number">3.1</span> 步驟一：規劃範圍與流程</h2>
 <section id="決定範圍" class="level3" data-number="3.1.1">
 <h3 data-number="3.1.1" class="anchored" data-anchor-id="決定範圍"><span class="header-section-number">3.1.1</span> 決定範圍</h3>
-<p>本 Skill 只處理我負責的 Part 2：<strong>結果變數是類別</strong>的三個迴歸模型。</p>
+<p>本 Skill 只處理 Part 2：<strong>結果變數是類別</strong>的三個迴歸模型。</p>
 <table class="caption-top table">
 <thead>
 <tr class="header">
@@ -5579,16 +5579,16 @@ z-index: 1000;
 <p><code>compare</code> 和 <code>report</code> 是第一次實測之後才加的，原因見步驟八。</p>
 <p>範圍外的情況在 <code>SKILL.md</code> 中明確列出，要求 Claude 說明原因並告知適合的方法，<strong>不要硬套</strong>：</p>
 <ul>
-<li>同一個體有多筆資料（配對、重複測量、叢集）：屬於 Part 3 的內容</li>
+<li>同一個體有多筆資料（配對、重複測量、叢集）：McNemar、GEE、GLMM（Agresti Ch.8–10）</li>
 <li>結果是計數：Poisson 迴歸</li>
 <li>結果是連續數值：一般線性迴歸</li>
-<li>只想看兩個類別變數有沒有關聯：列聯表與卡方檢定，屬於 Part 1 的內容</li>
+<li>只想看兩個類別變數有沒有關聯：列聯表與卡方檢定（Agresti Ch.2）</li>
 </ul>
 <p>範圍越清楚，Claude 越不會自己發揮。</p>
 </section>
 <section id="決定流程" class="level3" data-number="3.1.2">
 <h3 data-number="3.1.2" class="anchored" data-anchor-id="決定流程"><span class="header-section-number">3.1.2</span> 決定流程</h3>
-<p>我們希望 Skill 的使用方式像真正和統計顧問討論一樣：</p>
+<p>我希望 Skill 的使用方式像真正和統計顧問討論一樣：</p>
 <ol type="1">
 <li>拿到資料先描述，問清楚研究目的。</li>
 <li><strong>資料是否獨立一定要問</strong>，因為從資料本身看不出來。</li>
