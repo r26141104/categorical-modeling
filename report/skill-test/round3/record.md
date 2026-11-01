@@ -46,7 +46,7 @@
 
 ## 測試 2：同意配適
 
-**預期**：配適累積 logit，數字和第一次實測（`skill-test/q2/result.json`）相同；說明 `PO_VIOLATED`，並建議 multinomial 對照。
+**預期**：配適累積 logit，數字和第一次實測（`skill-test/round1/q2/result.json`）相同；說明 `PO_VIOLATED`，並建議 multinomial 對照。
 
 **觀察**（`screenshots/step2-results.png`、`step2-next.png`）：
 

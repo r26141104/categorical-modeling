@@ -36,7 +36,7 @@ library(VGAM)
 #   2 baseline-category logit §6.1（A）
 #   3 累積 logit §6.2（A）、比例勝算檢查 §6.3.2（A/B）
 #   Skill：categorical-modeling
-#   實測輸出：skill-test/qN/result.json（第一次）、skill-test/round2/（第二次：compare、report）、skill-test/round3/（第三次：改版後的行為，截圖與紀錄）；驗證：verify_results.json
+#   實測輸出：skill-test/round1/qN/result.json（第一次）、skill-test/round2/（第二次：compare、report）、skill-test/round3/（第三次：改版後的行為，截圖與紀錄）；驗證：verify_results.json
 #   模型比較：§4.3（數值分數 vs 類別）、§5.1（AIC）、§5.2（巢狀模型的 LR 檢定）（A）
 
 .blank <- function(x) is.null(x) || length(x) == 0 || (length(x) == 1 && (is.na(x) || x == ""))
@@ -49,7 +49,7 @@ q <- setNames(judg$questions, vapply(judg$questions, `[[`, "", "id"))
 v <- jsonlite::read_json("verify_results.json", simplifyVector = TRUE)
 ids <- c("q1", "q2", "q3")              # 第一次實測的三題；q1_compare 是第二次實測的追問
 sk <- lapply(ids, function(id) {
-  f <- file.path("skill-test", id, "result.json")
+  f <- file.path("skill-test/round1", id, "result.json")
   if (file.exists(f)) jsonlite::read_json(f, simplifyVector = TRUE) else NULL
 })
 names(sk) <- ids
@@ -58,7 +58,7 @@ r2q1 <- rd("skill-test/round2/q1/result.json")          # 第二次實測（新�
 r2c <- rd("skill-test/round2/q1_compare/result.json")
 r2cat <- rd("skill-test/round2/q1_cat/result.json")     # 比較之後，用 failures 當類別重新配適
 skill_plot <- function(id, name) {
-  f <- file.path("skill-test", id, paste0(name, ".png"))
+  f <- file.path("skill-test/round1", id, paste0(name, ".png"))
   if (!is.null(sk[[id]]) && file.exists(f)) f else NULL
 }
 ```
@@ -820,12 +820,12 @@ flowchart LR
 ```{r}
 #| echo: false
 #| results: asis
-shot <- list.files("skill-test/screenshots", pattern = "\\.png$", full.names = TRUE)
+shot <- list.files("skill-test/round1/screenshots", pattern = "\\.png$", full.names = TRUE)
 if (length(shot) > 0) {
   cat(sprintf("Skill 不會直接計算，**會先描述資料、跟你確認**：\n\n![Skill 的確認問題](%s)\n\n", shot[1]))
 }
 if (all(vapply(sk, is.null, logical(1)))) {
-  cat("::: {.callout-note}\n## 尚未實測\n完成 Skill 實測、把輸出放進 `skill-test/` 後，這一段會自動顯示結果與比對表。\n:::\n")
+  cat("::: {.callout-note}\n## 尚未實測\n完成 Skill 實測、把輸出放進 `skill-test/round1/` 後，這一段會自動顯示結果與比對表。\n:::\n")
 }
 ```
 
@@ -1225,7 +1225,7 @@ if (!is.null(tab_cat)) {
 
 - 實測在新的 Claude 對話中進行，只上傳 Skill 和資料，看不到我的判斷和驗證結果
 - 驗證程式用課本示範的 R 指令（`glm`、`anova`、`MASS`、`ordinal`、`nnet`），Skill 用 Python 的 statsmodels：兩邊是不同語言、不同套件，各自獨立計算
-- 資料結構與變數型態是 Skill 在對話中和使用者確認的，詳見對話紀錄（`skill-test/transcript.md`、`skill-test/round2/transcript.md`、`skill-test/round3/transcript.md`）
+- 資料結構與變數型態是 Skill 在對話中和使用者確認的，詳見對話紀錄（`skill-test/round1/transcript.md`、`skill-test/round2/transcript.md`、`skill-test/round3/transcript.md`）
 :::
 
 # 重點整理

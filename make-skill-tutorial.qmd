@@ -327,7 +327,7 @@ python scripts/run_model.py logistic --csv data/crabs.csv --y y --x width --nume
 
 Skill 確實照當時的規則一步一步進行：先描述資料，列出判斷請我確認，問要不要畫圖，推薦模型後等我說「好」才計算。
 
-![第 1 題：Skill 先列出判斷、請使用者確認](report/skill-test/screenshots/q1-confirm.png){width=85%}
+![第 1 題：Skill 先列出判斷、請使用者確認](report/skill-test/round1/screenshots/q1-confirm.png){width=85%}
 
 實際使用時發現，**每一步都要回覆，次數有點多**。比較有效率的做法是把確認的內容合併成一則訊息，例如：
 
@@ -335,7 +335,7 @@ Skill 確實照當時的規則一步一步進行：先描述資料，列出判�
 
 > 不用改模型，先這樣。接下來第 3 題：……每位學生彼此獨立，基準類別用 other，不用畫圖。
 
-完整的對話紀錄在 `report/skill-test/transcript.md`。
+完整的對話紀錄在 `report/skill-test/round1/transcript.md`。
 
 ### 測試結果
 

@@ -1,0 +1,172 @@
+{
+  "model": "logistic",
+  "data": "/mnt/user-data/uploads/student_por.csv",
+  "y": "pass",
+  "success": "pass",
+  "x": [
+    "studytime",
+    "failures",
+    "higher",
+    "sex"
+  ],
+  "numeric": [
+    "studytime",
+    "failures"
+  ],
+  "n": 649,
+  "n_success": 549,
+  "reference": {
+    "higher": "no",
+    "sex": "F"
+  },
+  "ci_type": "profile likelihood",
+  "coefficients": [
+    {
+      "term": "(Intercept)",
+      "label": "(Intercept)",
+      "estimate": 0.3545020195438817,
+      "se": 0.41155950311292083,
+      "z": 0.8613627357952561,
+      "p": 0.3890382930409936,
+      "or": 1.425470620994777,
+      "or_lower": 0.6363682744886021,
+      "or_upper": 3.20891251398932
+    },
+    {
+      "term": "studytime",
+      "label": "studytime（每增加 1）",
+      "estimate": 0.3716380719172524,
+      "se": 0.1699575540431598,
+      "z": 2.186652273325121,
+      "p": 0.028767918204761066,
+      "or": 1.4501080514786198,
+      "or_lower": 1.0496691651491583,
+      "or_upper": 2.0463009967125316
+    },
+    {
+      "term": "failures",
+      "label": "failures（每增加 1）",
+      "estimate": -1.0282153805927776,
+      "se": 0.17071384420706062,
+      "z": -6.023034542796918,
+      "p": 1.7117689183397806e-09,
+      "or": 0.3576446509675764,
+      "or_lower": 0.25293286926444625,
+      "or_upper": 0.4954917903097075
+    },
+    {
+      "term": "higheryes",
+      "label": "higher = yes（相對於 no）",
+      "estimate": 1.326004809721452,
+      "se": 0.30909927993858927,
+      "z": 4.289899381146724,
+      "p": 1.7875408629592122e-05,
+      "or": 3.765967535286058,
+      "or_lower": 2.0397942290716364,
+      "or_upper": 6.876949477489408
+    },
+    {
+      "term": "sexM",
+      "label": "sex = M（相對於 F）",
+      "estimate": -0.16434590609932725,
+      "se": 0.24911821682062876,
+      "z": -0.6597105109244594,
+      "p": 0.5094396202202301,
+      "or": 0.8484484876086573,
+      "or_lower": 0.5212280226086098,
+      "or_upper": 1.3875553536987004
+    }
+  ],
+  "lr_tests": [
+    {
+      "variable": "studytime",
+      "lr": 5.124501858135204,
+      "df": 1,
+      "p": 0.02359034086419997
+    },
+    {
+      "variable": "failures",
+      "lr": 39.51236765439273,
+      "df": 1,
+      "p": 3.259882935292931e-10
+    },
+    {
+      "variable": "higher",
+      "lr": 17.242787551998674,
+      "df": 1,
+      "p": 3.289438917467067e-05
+    },
+    {
+      "variable": "sex",
+      "lr": 0.4335632909246101,
+      "df": 1,
+      "p": 0.5102456555334496
+    }
+  ],
+  "overall": {
+    "lr": 96.81915916225347,
+    "df": 4,
+    "p": 4.67517503552864e-20
+  },
+  "auc": 0.799016393442623,
+  "effects": [
+    {
+      "variable": "studytime",
+      "value": "Q1",
+      "at": "1",
+      "probability": 0.8610459612960336
+    },
+    {
+      "variable": "studytime",
+      "value": "Q3",
+      "at": "2",
+      "probability": 0.8998575440436456
+    },
+    {
+      "variable": "failures",
+      "value": "最小值",
+      "at": "0",
+      "probability": 0.9166757768847581
+    },
+    {
+      "variable": "failures",
+      "value": "最大值",
+      "at": "3",
+      "probability": 0.3347828085768022
+    },
+    {
+      "variable": "higher",
+      "value": "no",
+      "at": "no",
+      "probability": 0.6992795492475704
+    },
+    {
+      "variable": "higher",
+      "value": "yes",
+      "at": "yes",
+      "probability": 0.8975114047723681
+    },
+    {
+      "variable": "sex",
+      "value": "F",
+      "at": "F",
+      "probability": 0.8975114047723681
+    },
+    {
+      "variable": "sex",
+      "value": "M",
+      "at": "M",
+      "probability": 0.8813763031463193
+    }
+  ],
+  "warnings": [
+    {
+      "code": "GOF_NOTE",
+      "message": "模型含數值解釋變數，deviance 不能當適合度檢定；要檢查模型，請和更複雜的模型（例如加交互作用）做概似比比較（§5.2.3）。"
+    }
+  ],
+  "plots": [
+    "probability_curve.png",
+    "roc.png"
+  ]
+}
