@@ -628,7 +628,7 @@ categorical-modeling/
 
 先確認資料**是否獨立**、結果變數**是什麼型態**，再依「幾類、有沒有順序」選模型，最後確認模型設定：
 
-![選模型的決策樹（decision-tree.png）](demo/part2/decision-tree.png){width=70%}
+![選模型的決策樹（decision-tree.png）](demo/part2/decision-tree.png){width=45%}
 
 ## 一則訊息確認所有設定
 
