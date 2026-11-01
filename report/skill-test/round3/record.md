@@ -4,7 +4,7 @@
 - 環境：Claude App，新對話，上傳更新後的 `categorical-modeling.zip`
 - 資料：`student_por.csv`（649 列 × 34 欄）
 - 測試的版本：測試 1–4 用 commit `b387cb3`（新版 `decision-tree.md`、`SKILL.md` 新增三種工作模式）；測試 5 用加入「選擇題列出下一步」之後的版本。
-- 完整對話：`transcript.md`
+- 對話紀錄：`transcript.md`（依截圖整理）
 
 ## 測試目的
 
