@@ -229,16 +229,17 @@ ggplot2::ggplot(Crabs, ggplot2::aes(width, y)) +
   ggplot2::labs(x = "背甲寬度（cm）", y = "有衛星雄蟹的機率")
 ```
 
-::::: {.callout-note collapse="true"}
-## R code — logistic 迴歸（點開查看）
-
 ```{r}
+#| label: code-logit-1
+#| include: false
 Crabs <- read.table("data/agresti/Crabs.dat", header = TRUE)
 fit <- glm(y ~ width, family = binomial, data = Crabs)
 summary(fit)                          # 估計值、SE、Wald 檢定、deviance
 ```
 
 ```{r}
+#| label: code-logit-2
+#| include: false
 exp(coef(fit))                        # 勝算比
 confint(fit)                          # profile likelihood 信賴區間（β）
 exp(confint(fit))                     # 勝算比的信賴區間
@@ -246,12 +247,7 @@ anova(fit, test = "LRT")              # 概似比檢定（D0 − D1）
 predict(fit, data.frame(width = c(21, 26.3, 33.5)), type = "response")   # 預測機率
 ```
 
-::: {.callout-note}
-## Note
-`summary()` 印出的 `z value` 與 `Pr(>|z|)` 是 **Wald 檢定**；`Null deviance` 減 `Residual deviance` 就是 **LR 統計量**。`confint()` 給的是 profile likelihood 區間，`confint.default()` 才是 Wald 區間 $\hat\beta \pm z_{\alpha/2} SE$。
-:::
-
-:::::
+R 程式碼與輸出：見附錄 A.1。
 
 ## 多個解釋變數（Multiple Logistic Regression）
 
@@ -270,7 +266,11 @@ $$
 ::::: {.callout-note collapse="true"}
 ## 例題：加入顏色（點開查看）
 
+R 程式碼與輸出：見附錄 A.2。
+
 ```{r}
+#| label: code-color
+#| include: false
 fit2 <- glm(y ~ width + factor(color), family = binomial, data = Crabs)
 summary(fit2)$coefficients
 car::Anova(fit2)                      # 每個變數的 LR 檢定（Type II）
@@ -305,7 +305,11 @@ $$
 
 **(2) 預測能力：ROC 曲線**。以預測機率 $\hat\pi_i$ 對所有切點畫出敏感度對 1 − 特異度。**曲線下面積**（AUC）又稱 **concordance index**：隨機取一個 $y = 1$ 和一個 $y = 0$ 的觀察值，模型給前者較高預測機率的機率。0.5 = 亂猜，1 = 完美區分。
 
+程式碼與兩個模型的 AUC：見附錄 A.3。
+
 ```{r}
+#| label: code-roc
+#| include: false
 library(pROC)
 c(只用寬度 = auc(roc(Crabs$y, fitted(fit), quiet = TRUE)),
   寬度加顏色 = auc(roc(Crabs$y, fitted(fit2), quiet = TRUE)))
@@ -313,7 +317,11 @@ c(只用寬度 = auc(roc(Crabs$y, fitted(fit), quiet = TRUE)),
 
 **(3) 完全分離（complete separation）**。若某個 $x$ 值以下全是 0、以上全是 1，概似函數沒有最大值，$\hat\beta = \infty$：
 
+程式碼與輸出：見附錄 A.3。
+
 ```{r}
+#| label: code-sep
+#| include: false
 toy <- data.frame(x = 1:6, y = c(0, 0, 0, 1, 1, 1))
 summary(glm(y ~ x, family = binomial, data = toy))$coefficients
 ```
@@ -414,10 +422,11 @@ ggplot2::ggplot(long, ggplot2::aes(x, p, colour = food)) +
   ggplot2::labs(x = "體長（公尺）", y = "預測機率", colour = "主食")
 ```
 
-::::: {.callout-note collapse="true"}
-## R code — baseline-category logit（點開查看）
+R 程式碼與輸出：見附錄 A.4。
 
 ```{r}
+#| label: code-bcl
+#| include: false
 library(VGAM)
 Gators <- read.table("data/agresti/Alligators.dat", header = TRUE)
 fit3 <- vglm(y ~ x, family = multinomial(refLevel = "O"), data = Gators)   # 基準類別 = O
@@ -426,7 +435,6 @@ fit3_0 <- vglm(y ~ 1, family = multinomial(refLevel = "O"), data = Gators)
 deviance(fit3_0) - deviance(fit3)     # LR 統計量，df = 2
 ```
 
-:::::
 
 # 累積 Logit 模型（有序結果）
 
@@ -520,10 +528,11 @@ ggplot2::ggplot(long4, ggplot2::aes(party, p, fill = cat)) +
   ggplot2::labs(x = NULL, y = "預測機率（女性）", fill = NULL)
 ```
 
-::::: {.callout-note collapse="true"}
-## R code — 累積 logit（點開查看）
+R 程式碼與輸出：見附錄 A.5。
 
 ```{r}
+#| label: code-cum
+#| include: false
 Pol <- read.table("data/agresti/Polviews.dat", header = TRUE)
 Pol                                   # y1 非常自由 … y5 非常保守（彙整次數）
 fit4 <- vglm(cbind(y1, y2, y3, y4, y5) ~ party + gender,
@@ -532,7 +541,6 @@ coef(summary(fit4))
 exp(-coef(fit4)[c("partyrepub", "gendermale")])                # 落在較高類別的勝算比
 ```
 
-:::::
 
 ## 比例勝算假設的檢查（Checking Proportional Odds）
 
@@ -541,10 +549,11 @@ exp(-coef(fit4)[c("partyrepub", "gendermale")])                # 落在較高類
 - $H_0$：比例勝算成立（$\beta_1 = \cdots = \beta_{J-1}$）
 - $LR = -2(\ell_{\text{PO}} - \ell_{\text{general}})$，$df = (J-2) \times p$（$p$ = 解釋變數的參數個數）
 
-::::: {.callout-note collapse="true"}
-## R code — 比例勝算假設檢定（點開查看）
+R 程式碼與輸出：見附錄 A.6。
 
 ```{r}
+#| label: code-po
+#| include: false
 fit4_np <- vglm(cbind(y1, y2, y3, y4, y5) ~ party + gender,
                 family = cumulative(parallel = FALSE), data = Pol)
 LR_po <- deviance(fit4) - deviance(fit4_np)
@@ -552,7 +561,6 @@ df_po <- df.residual(fit4) - df.residual(fit4_np)
 c(LR = LR_po, df = df_po, P = pchisq(LR_po, df_po, lower.tail = FALSE))
 ```
 
-:::::
 
 例題中 $LR = `r fmt_num(LR_po, 2)`$，$df = `r df_po`$，$P `r ptxt(pchisq(LR_po, df_po, lower.tail = FALSE))`$，不拒絕 $H_0$，比例勝算模型適用。
 
@@ -630,7 +638,7 @@ categorical-modeling/
 │   ├── textbook-methods.md     <- 課本細節：假設、公式、注意事項
 │   └── decision-tree.md        <- 選模型的決策樹、協助使用者判斷、配適後建議的比較
 ├── scripts/
-│   └── run_model.py            <- 實際計算（statsmodels）＋畫圖＋比較模型＋產生報告
+│   └── run_model.py            <- 整理資料格式＋實際計算（statsmodels）＋畫圖＋比較模型＋產生報告
 ├── data/                       <- 範例資料（馬蹄蟹、鱷魚、高中生）
 └── decision-tree.png           <- 決策樹圖
 ```
@@ -643,7 +651,7 @@ categorical-modeling/
 | `methods.md` | 一頁速查：模型式、$H_0$、統計量、勝算比怎麼解釋、對應的指令 |
 | `textbook-methods.md` | 最深的一層：完整假設、估計與推論、模型檢查、模型比較、常見誤解，附 Agresti 節號 |
 | `decision-tree.md` | 幫 Claude 決定用哪個模型、還要問使用者哪些設定；使用者不確定時用例子協助判斷，並附上每個判斷的理論依據；配適後依警告代碼建議做哪些比較 |
-| `run_model.py` | 被執行的程式（Python）：描述資料、畫圖、配適與比較模型、產生報告 |
+| `run_model.py` | 被執行的程式（Python）：整理資料格式、描述資料、畫圖、配適與比較模型、產生報告 |
 
 ## 怎麼使用？
 
@@ -655,11 +663,44 @@ categorical-modeling/
 
 > 用 categorical-modeling skill 分析這份資料：哪些因素會影響學生是否及格？
 
+資料不一定要是「每個觀察對象一列」。Skill 會先用 `tidy` 整理，並請你確認轉換結果：
+
+| 資料長相 | 例子 | Skill 怎麼做 |
+|---|---|---|
+| 每個觀察對象一列 | 每位學生一列，欄位是 sex、studytime、pass | 直接分析 |
+| 每個觀察對象一欄 | 第一欄是變數名稱，之後每一欄是一位學生 | `tidy --layout transpose` 轉置 |
+| 次數表 | 每一列是一種組合，另有一欄人數（count） | `tidy --layout freq` 依人數展開 |
+| 交叉表 | 列是解釋變數的類別、欄是結果的類別、格子是人數（課本的 Polviews） | `tidy --layout crosstab` 展開 |
+
+```{r}
+#| include: false
+tc <- jsonlite::fromJSON("skill-test/tidy-check/ordinal/result.json")
+tc_or <- tc$coefficients$or_higher[tc$coefficients$term == "partyrepub"]
+```
+
+例如課本的 Polviews 是交叉表（性別、政黨 × 五種意識形態）。用 `tidy` 展開成 `r tc$n` 人、每人一列後，用 Skill 配適累積 logit：共和黨 vs 民主黨落在較高（較保守）類別的勝算比是 `r fmt_num(tc_or, 2)`，和本頁第 3 節直接用交叉表、以 R 計算的 `r fmt_num(exp(-coef(fit4)[["partyrepub"]]), 2)` 相同（紀錄在 `skill-test/tidy-check/`）。
+
 ## Skill 怎麼選模型？
 
-先確認資料**是否獨立**、結果變數**是什麼型態**，再依「幾類、有沒有順序」選模型，最後確認模型設定：
+流程分成兩段：**A 選模型**先把資料整理成每個觀察對象一列，確認資料**是否獨立**、結果變數**是什麼型態**，再依「幾類、有沒有順序」選模型；三個模型都接到 **B 分析流程**：確認清單、（畫圖）、配適、檢查警告、解釋、下一步。
 
-![選模型的決策樹（decision-tree.png）](../decision-tree.png){width=45%}
+![選模型的決策樹與分析流程（decision-tree.png）](../decision-tree.png){width=100%}
+
+流程圖每一步的依據：
+
+| 步驟 | 做什麼 | 依據（Agresti, 2019） | 寫在 Skill 的哪裡 |
+|---|---|---|---|
+| tidy | 把「每個對象一欄」、次數表、交叉表整理成每個觀察對象一列 | 次數展開成個別資料，概似函數不變；用課本 Polviews 驗證，勝算比與 R 一致 | `run_model.py tidy`；`decision-tree.md`「資料格式」 |
+| describe | 自動算出樣本數、變數型態、類別數、次數、缺失 | — | `run_model.py describe` |
+| ① 是否獨立 | 不獨立就停止，改用 McNemar、GEE、GLMM | 二項／多項分布的獨立假設（§1.1.3）；相關資料的方法（Ch.8–10） | `decision-tree.md` Phase 0 |
+| 結果 Y 的型態 | 計數、連續 → 範圍外 | GLM 的三個成分（§3.1）；計數資料用 Poisson 迴歸（§3.3） | `decision-tree.md` Phase 0 |
+| Y 有幾類、② 有沒有順序 | 兩類 → logistic；名目 → baseline-category logit；有序 → 累積 logit | §4.1、§6.1、§6.2 | `decision-tree.md` 主決策樹 |
+| 確認清單 ③–⑥ | 數值或類別、參考組、成功／基準類別、樣本數 | §4.3、§4.4、§6.1、§5.1.1 | `SKILL.md` 步驟 1；`decision-tree.md` |
+| plot | 依解釋變數分組的比例長條圖（描述，不做推論） | — | `run_model.py plot` |
+| 配適模型 | 勝算比、概似比檢定、預測機率、AUC | §4.2、§4.6、§6.1–6.2 | `run_model.py logistic／multinomial／ordinal`；`methods.md` |
+| 檢查警告代碼 | 完全分離、樣本太少、適合度、比例勝算、缺失 | §5.3、§5.1.1、§5.2.3、§6.3.2 | `decision-tree.md`「警告代碼與下一步」 |
+| compare | 巢狀模型用 LR 檢定，非巢狀用 AIC | §4.3、§5.2、§5.1 | `run_model.py compare`；`textbook-methods.md` |
+| report | 把結果整理成 HTML 報告 | — | `run_model.py report` |
 
 圖只畫主幹。使用者不確定時（例如不知道結果有沒有順序、資料算不算獨立），Skill 不會要使用者回答術語，而是**用例子協助判斷**，並說明背後的理由，例如：
 
@@ -677,8 +718,8 @@ categorical-modeling/
 
 | 編號 | 要確認的事 | 為什麼要問 |
 |---|---|---|
-| ① | 每一列是不是不同、獨立的個體？ | 資料本身證明不了獨立；不獨立就不能用這三個模型 |
-| ② | 結果有幾類？有沒有順序？ | 決定用哪一個模型 |
+| ① | 每個觀察對象（例如每位學生）是不是只出現一次、彼此獨立？ | 資料本身證明不了獨立；不獨立就不能用這三個模型 |
+| ② | 結果的類別數與順序 | 類別數由程式自動算出，**不會問你**；Skill 依變數意義建議有沒有順序、由低到高的順序，你只要確認 |
 | ③ | 數字代碼（例如 1–4）要當數值還是類別？ | 當數值只用 1 個參數、假設等距效果；當類別則每類各自估計 |
 | ④ | 類別型解釋變數的參考組 | 決定勝算比是「和誰比」 |
 | ⑤ | 「成功」是哪一類／基準類別 | 決定勝算比的方向；多類別模型的比較對象 |
@@ -720,6 +761,7 @@ if (length(f) > 0) cat("::: {.callout-note collapse=\"true\"}\n## 實際畫面�
 
 | 指令 | 輸出 | 圖 |
 |---|---|---|
+| `tidy` | 把每個對象一欄、次數表、交叉表整理成每個觀察對象一列，印出轉換後的筆數與前幾列 | — |
 | `describe` | 變數型態、次數、缺失值、可能不獨立的跡象，以及參考組等設定的程式預設 | — |
 | `plot` | 結果變數依解釋變數分組的比例，**同時印出實際比例** | 比例長條圖 |
 | `logistic` | 勝算比與 profile 信賴區間、每個變數的概似比檢定、AUC、預測機率 | 預測機率曲線、ROC 曲線 |
@@ -807,6 +849,8 @@ flowchart LR
 | 使用者不確定結果有沒有順序、資料算不算獨立時，Skill 沒有協助的方法 | `decision-tree.md` 只有決策樹，沒有例子和理由 | 決策樹補上用例子協助判斷的表格、每個判斷的理論依據、警告代碼的處理；流程圖整理成只畫主幹 |
 | 每一步都要自己打字回覆，也不知道哪個下一步比較好 | 結尾只用文字列出選項 | 結尾改用**選擇題**，推薦的選項放第一個並標「（推薦）」，推薦依固定規則 |
 | 只問一個概念或改一個設定，也要從頭走一遍 | 只有一種完整流程 | 新增三種工作模式：完整分析、只問概念、接續分析 |
+| 資料必須是「每個觀察對象一列」，次數表、交叉表或每人一欄的資料不能直接用 | 分析指令只讀標準格式 | 新增 `tidy` 指令，自動整理成每個觀察對象一列；用課本 Polviews 驗證結果與 R 相同 |
+| 流程圖太長、字太小 | 選模型和分析流程畫在同一條直線上 | 拆成「A 選模型」「B 分析流程」兩段並排，每一步附上課本節號 |
 
 完整的製作過程（每個檔案怎麼寫、怎麼測試）見 `make-skill-tutorial.html`。
 
@@ -1237,7 +1281,7 @@ if (!is.null(tab_cat)) {
 | 重點 | 內容 |
 |---|---|
 | 方法 | 結果兩類用 logistic 迴歸；三類以上依有沒有順序，選 baseline-category logit 或累積 logit |
-| Skill 能做什麼 | 選模型、配適、白話解釋，還能比較兩個模型、產生 HTML 報告 |
+| Skill 能做什麼 | 整理資料格式、選模型、配適、白話解釋，還能比較兩個模型、產生 HTML 報告 |
 | Skill 的分工 | Claude 判斷、確認、解釋；程式（Python）負責所有計算 |
 | Skill 的結構 | `SKILL.md`（規則與流程）＋ `references/`（速查、課本細節、決策樹）＋ `scripts/run_model.py`（計算、比較、報告） |
 | Skill 的特色 | 一則確認清單、結尾用選擇題標出推薦、未經同意不計算；使用者不確定時用例子協助判斷；每個方法都有課本依據；主動提醒分離、樣本數、比例勝算、等距假設等問題 |
@@ -1253,3 +1297,69 @@ if (!is.null(tab_cat)) {
 Agresti, A. (2019). *An Introduction to Categorical Data Analysis* (3rd ed.). John Wiley & Sons.
 
 Cortez, P., & Silva, A. (2008). Using data mining to predict secondary school student performance. In *Proceedings of 5th Future Business Technology Conference* (pp. 5–12). UCI Machine Learning Repository. https://doi.org/10.24432/C5TG7T
+
+
+# 附錄：R 程式碼 {.unnumbered}
+
+前面課本例題的計算都在這裡，依章節排列。資料在 GitHub repo 的 `report/data/agresti/`（取自 Agresti 官方資料集）；Skill 實測的獨立驗證程式另見 `report/verify.R`。
+
+## A.1　二元 logistic 迴歸：馬蹄蟹（§4.1–4.2） {.unnumbered}
+
+```{r}
+#| ref.label: code-logit-1
+#| echo: true
+```
+
+```{r}
+#| ref.label: code-logit-2
+#| echo: true
+```
+
+::: {.callout-note}
+## Note
+`summary()` 印出的 `z value` 與 `Pr(>|z|)` 是 **Wald 檢定**；`Null deviance` 減 `Residual deviance` 就是 **LR 統計量**。`confint()` 給的是 profile likelihood 區間，`confint.default()` 才是 Wald 區間 $\hat\beta \pm z_{\alpha/2} SE$。
+:::
+
+## A.2　多個解釋變數：加入顏色（§4.4） {.unnumbered}
+
+```{r}
+#| ref.label: code-color
+#| echo: true
+```
+
+## A.3　模型檢查：ROC 曲線與完全分離（§4.6、§5.3） {.unnumbered}
+
+兩個模型的 AUC（concordance index）：
+
+```{r}
+#| ref.label: code-roc
+#| echo: true
+```
+
+完全分離的小例子：係數與 SE 都大得離譜，Wald 檢定沒有意義。
+
+```{r}
+#| ref.label: code-sep
+#| echo: true
+```
+
+## A.4　baseline-category logit：鱷魚主食（§6.1） {.unnumbered}
+
+```{r}
+#| ref.label: code-bcl
+#| echo: true
+```
+
+## A.5　累積 logit：政治意識形態（§6.2） {.unnumbered}
+
+```{r}
+#| ref.label: code-cum
+#| echo: true
+```
+
+## A.6　比例勝算假設檢定（§6.3.2） {.unnumbered}
+
+```{r}
+#| ref.label: code-po
+#| echo: true
+```

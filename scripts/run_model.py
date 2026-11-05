@@ -5,6 +5,7 @@
   二元 logistic §4.1–4.6、§5.1–5.3；baseline-category logit §6.1；累積 logit §6.2–6.3
 
 用法：
+  python scripts/run_model.py tidy        --csv 原始.csv --layout transpose|freq|crosstab [--freq 次數欄] [--keep a,b --y Y] [--file tidy.csv]
   python scripts/run_model.py describe    --csv data.csv [--vars a,b,c]
   python scripts/run_model.py plot        --csv data.csv --y Y [--x X] [--out output]
   python scripts/run_model.py logistic    --csv data.csv --y Y --x a,b [--success 類別] [--numeric a] [--ref b=類別] [--out output]
@@ -284,7 +285,64 @@ def cmd_describe(a):
         name = str(v).lower()
         if (name == "id" or name.endswith("_id") or name.startswith("id_") or any(s in str(v) for s in ("編號", "代號", "學號"))) and d[v].duplicated().any():
             hints.append(f"欄位 {v} 有重複值：同一個體可能有多筆資料（配對或重複測量），獨立性的模型不適用。")
-    print("\n資料結構提示：" + (" ".join(hints) if hints else "沒有發現重複的代號欄位；但每一列是否為不同、獨立的個體，仍須向使用者確認。"))
+    fmt_hints = []
+    if d.shape[1] > d.shape[0]:
+        fmt_hints.append("欄數比列數多：可能是「每一欄是一個觀察對象」，可用 tidy --layout transpose 轉換。")
+    cnt_cols = [v for v in d.columns if str(v).strip().lower() in ("count", "counts", "freq", "frequency", "n", "次數", "人數", "頻數")]
+    if cnt_cols:
+        fmt_hints.append(f"欄位 {cnt_cols[0]} 看起來是次數：資料可能是次數表（每一列是一種組合），可用 tidy --layout freq --freq {cnt_cols[0]} 轉換。")
+    if fmt_hints:
+        print("\n資料格式提示：" + " ".join(fmt_hints))
+    print("\n資料結構提示：" + (" ".join(hints) if hints else "沒有發現重複的代號欄位；但每個觀察對象是否只出現一次、彼此獨立，仍須向使用者確認。"))
+
+# ---------------------------------------------------------------- tidy：把各種資料格式轉成「每個觀察對象一列」
+
+def _to_counts(col, name):
+    c = pd.to_numeric(col, errors="coerce")
+    if c.isna().any() or (c < 0).any() or not np.all(np.mod(c, 1) == 0):
+        sys.exit(f"{name} 必須是 0 以上的整數次數。")
+    return c.astype(int)
+
+def cmd_tidy(a):
+    d = read_any(a.csv)
+    layout = a.layout or "freq"
+    out_file = a.file or "tidy.csv"
+    print(f"原始資料：{len(d)} 列 × {d.shape[1]} 欄（格式：{layout}）")
+    if layout == "transpose":
+        # 第一欄是變數名稱，其他每一欄是一個觀察對象
+        t = d.set_index(d.columns[0]).T.reset_index(drop=True)
+        t.columns = [str(c).strip() for c in t.columns]
+        for c in t.columns:
+            num = pd.to_numeric(t[c], errors="coerce")
+            if num.notna().sum() == t[c].notna().sum():
+                t[c] = num
+        res = t
+    elif layout == "freq":
+        # 每一列是一種組合，--freq 欄位是這種組合的人數
+        if not a.freq or a.freq not in d.columns:
+            sys.exit("次數表請用 --freq 指定次數欄位的名稱。")
+        n = _to_counts(d[a.freq], a.freq)
+        res = d.loc[d.index.repeat(n)].drop(columns=a.freq).reset_index(drop=True)
+        print(f"次數欄位 {a.freq} 合計 {int(n.sum())}")
+    elif layout == "crosstab":
+        # --keep 是解釋變數欄位（預設第一欄）；其他每一欄是結果的一個類別，格子裡是人數
+        keep = split_arg(a.keep) or [d.columns[0]]
+        need_cols(d, keep)
+        if not a.y:
+            sys.exit("交叉表請用 --y 指定結果變數的新名稱（例如 --y ideology）。")
+        cats = [c for c in d.columns if c not in keep]
+        for c in cats:
+            d[c] = _to_counts(d[c], f"欄位 {c}")
+        long = d.melt(id_vars=keep, value_vars=cats, var_name=a.y, value_name="_n")
+        res = long.loc[long.index.repeat(long["_n"])].drop(columns="_n").reset_index(drop=True)
+        print(f"結果變數 {a.y} 的類別（依原欄位順序）：{'、'.join(map(str, cats))}；次數合計 {int(long['_n'].sum())}")
+    else:
+        sys.exit("--layout 只能是 transpose、freq 或 crosstab。")
+    res.to_csv(out_file, index=False, encoding="utf-8-sig")
+    print(f"轉換後：{len(res)} 列 × {res.shape[1]} 欄，每一列是一個觀察對象；欄位：{'、'.join(map(str, res.columns))}")
+    print("前 5 列：")
+    print(res.head().to_string(index=False))
+    print(f"已存成：{os.path.abspath(out_file)}（之後的指令都用這個檔案）")
 
 # ---------------------------------------------------------------- plot
 
@@ -924,17 +982,17 @@ def cmd_report(a):
 
 def main():
     p = argparse.ArgumentParser(description="類別結果模型 Skill 的計算程式")
-    p.add_argument("cmd", choices=["describe", "plot", "logistic", "multinomial", "ordinal", "compare", "report"])
+    p.add_argument("cmd", choices=["tidy", "describe", "plot", "logistic", "multinomial", "ordinal", "compare", "report"])
     for opt in ("csv", "vars", "y", "x", "success", "numeric", "ref", "baseline", "levels", "out",
-                "type", "x2", "numeric2", "title", "summary", "file"):
+                "type", "x2", "numeric2", "title", "summary", "file", "layout", "keep", "freq"):
         p.add_argument(f"--{opt}", action="append")
     a = p.parse_args()
     # 同一個選項給好幾次時（例如 --ref higher=no --ref sex=F），清單型的選項全部合併，其他選項取最後一個
-    for opt in ("x", "x2", "vars", "numeric", "numeric2", "ref", "out"):
+    for opt in ("x", "x2", "vars", "numeric", "numeric2", "ref", "out", "keep"):
         v = getattr(a, opt)
         if v is not None:
             setattr(a, opt, ",".join(s for s in v if s is not None))
-    for opt in ("csv", "y", "success", "baseline", "levels", "type", "title", "summary", "file"):
+    for opt in ("csv", "y", "success", "baseline", "levels", "type", "title", "summary", "file", "layout", "freq"):
         v = getattr(a, opt)
         if v is not None:
             setattr(a, opt, v[-1])
@@ -942,11 +1000,13 @@ def main():
         return cmd_report(a)
     if not a.csv:
         sys.exit("請用 --csv 指定資料檔。")
+    if a.cmd == "tidy":
+        return cmd_tidy(a)
     if a.cmd in ("plot", "logistic", "multinomial", "ordinal", "compare") and not a.y:
         sys.exit("請用 --y 指定結果變數。")
     if a.cmd in ("logistic", "multinomial", "ordinal", "compare") and not a.x:
         sys.exit("請用 --x 指定解釋變數（多個用逗號分隔）。")
-    {"describe": cmd_describe, "plot": cmd_plot, "logistic": cmd_logistic,
+    {"tidy": cmd_tidy, "describe": cmd_describe, "plot": cmd_plot, "logistic": cmd_logistic,
      "multinomial": cmd_multinomial, "ordinal": cmd_ordinal, "compare": cmd_compare}[a.cmd](a)
 
 if __name__ == "__main__":

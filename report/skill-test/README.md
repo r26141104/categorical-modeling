@@ -38,3 +38,7 @@ skill-test/
     ├── screenshots/        截圖
     └── transcript.md       對話紀錄（依截圖整理）
 ```
+
+## 資料格式轉換的驗證（`tidy-check/`）
+
+課本的 Polviews 是交叉表（性別、政黨 × 五種意識形態，共 661 人）。用 `tidy --layout crosstab` 展開成每人一列（`polviews_tidy.csv`、`tidy_log.txt`），再用 Skill 配適累積 logit（`ordinal/result.json`）：共和黨 vs 民主黨的勝算比 37.85、比例勝算檢定 LR = 6.22（df = 6），和直接用交叉表在 R（`VGAM::vglm`）計算的結果相同。

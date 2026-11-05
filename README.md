@@ -47,33 +47,63 @@
 
 ### 分析流程
 
+流程分成兩段：**A 選模型**決定用哪一個模型，三個模型都接到 **B 分析流程**（圖檔版：[`decision-tree.png`](decision-tree.png)）。
+
+**A　選模型**
+
 ```mermaid
 flowchart TD
- A["資料檔＋研究問題"] --> B["describe：描述資料<br>樣本數、變數型態、次數、缺失"]
- B --> C{"① 每一列彼此獨立？<br>（要問使用者）"}
- C -->|否| Z1["範圍外<br>McNemar、GEE、GLMM"]
- C -->|是| E{"結果變數的型態？"}
- E -->|計數| Z2["範圍外<br>Poisson／負二項"]
+ A0["資料檔＋研究問題"] --> A1["tidy：整理成每個觀察對象一列<br>（原本就是就跳過）"]
+ A1 --> B["describe：程式自動算出<br>樣本數、變數型態、類別數、次數、缺失"]
+ B --> C{{"① 觀察對象彼此獨立？<br>要問使用者｜§1.1.3"}}
+ C -->|否| Z1["範圍外<br>McNemar、GEE、GLMM｜Ch.8–10"]
+ C -->|是| E{{"結果 Y 的型態？"}}
+ E -->|計數| Z2["範圍外<br>Poisson／負二項｜§3.3"]
  E -->|連續| Z3["範圍外<br>一般線性迴歸"]
- E -->|類別| F{"結果有幾類？"}
- F -->|兩類| M1["二元 logistic 迴歸<br>logistic｜§4"]
- F -->|三類以上| G{"② 類別有自然順序？"}
- G -->|沒有| M2["baseline-category logit<br>multinomial｜§6.1"]
- G -->|有| M3["累積 logit<br>ordinal｜§6.2"]
- M1 --> K["送出確認清單 ①–⑥<br>停下來等使用者回覆"]
- M2 --> K
- M3 --> K
- K -.->|先畫圖（可選）| P["plot：畫圖"]
- K -->|照預設| L["配適模型"]
+ E -->|類別| F{{"Y 有幾類？<br>程式自動計算"}}
+ F -->|兩類| M1["二元 logistic 迴歸<br>§4"]
+ F -->|三類以上| G{{"② 類別有自然順序？<br>Skill 建議、使用者確認"}}
+ G -->|沒有| M2["baseline-category logit<br>§6.1"]
+ G -->|有| M3["累積 logit<br>§6.2"]
+
+ classDef ask fill:#FFF4D6,stroke:#C99A2E,color:#3A2E00
+ classDef model fill:#DCE8F7,stroke:#1F3A5F,stroke-width:2px,color:#10233F
+ classDef stop fill:#EFEFEF,stroke:#888,color:#333
+ class C,G ask
+ class M1,M2,M3 model
+ class Z1,Z2,Z3 stop
+```
+
+**B　分析流程**
+
+```mermaid
+flowchart TD
+ K["確認清單 ①–⑥<br>選擇題：照預設配適（推薦）"]
+ K -.->|先畫圖（可選）| P["plot：比例長條圖"]
+ K --> L["配適模型<br>LR 檢定、勝算比、預測機率"]
  P -.-> L
- L --> W["檢查警告代碼"]
+ L --> W["檢查警告代碼<br>完全分離 §5.3、比例勝算 §6.3.2"]
  W --> R["白話解釋結果"]
- R --> Q{"建議下一步<br>（等使用者同意）"}
- Q -->|比較模型| T["compare<br>巢狀：LR 檢定／非巢狀：AIC"]
- Q -->|產生報告| V["report：產生 HTML 報告"]
+ R --> Q{{"選擇題：下一步"}}
+ Q -->|比較模型| T["compare<br>巢狀：LR 檢定 §5.2<br>非巢狀：AIC §5.1"]
+ Q -->|產生報告| V["report<br>產生 HTML 報告"]
+
+ classDef ask fill:#FFF4D6,stroke:#C99A2E,color:#3A2E00
+ class K,Q ask
 ```
 
 每個判斷點的理由、使用者不確定時怎麼協助判斷，見 [`references/decision-tree.md`](references/decision-tree.md)。
+
+### 支援的資料格式
+
+資料不一定要是「每個觀察對象一列」，Skill 會先用 `tidy` 自動整理，再請你確認轉換結果：
+
+| 資料長相 | 例子 |
+|---|---|
+| 每個觀察對象一列（標準格式） | 每位學生一列，欄位是 sex、studytime、pass |
+| 每個觀察對象一欄 | 第一欄是變數名稱，之後每一欄是一位學生 |
+| 次數表 | 每一列是一種組合，另有一欄是人數（count） |
+| 交叉表 | 列是解釋變數的類別，欄是結果的類別，格子裡是人數（例如課本的 Polviews） |
 
 ### 流程中 Claude 會問你什麼
 
@@ -81,8 +111,8 @@ flowchart TD
 
 | 編號 | 確認事項 | 說明 |
 |---|---|---|
-| ① | 每一列是不是不同、彼此獨立的個體 | 資料本身看不出來，一定要你確認 |
-| ② | 結果有幾類、有沒有順序 | 決定用哪一個模型 |
+| ① | 每個觀察對象（例如每位學生）是否只出現一次、彼此獨立 | 資料本身看不出來，一定要你確認 |
+| ② | 結果的類別數與順序 | 類別數由程式自動算出；Skill 依變數意義建議有沒有順序，你只要確認 |
 | ③ | 數字代碼當數值分數還是類別 | 例如讀書時間 1–4 |
 | ④ | 類別型解釋變數的參考組 | 預設排序後第一個類別 |
 | ⑤ | 二元結果的成功類別、名目結果的基準類別 | 只改變勝算比的方向 |
@@ -128,7 +158,7 @@ categorical-modeling/
 │   ├── methods.md              三個模型速查：H0、統計量、效果量、指令
 │   └── textbook-methods.md     課本細節：假設、公式、注意事項（附節號）
 ├── scripts/
-│   └── run_model.py            所有計算：描述、畫圖、配適、比較模型、產生報告
+│   └── run_model.py            所有計算：整理格式、描述、畫圖、配適、比較模型、產生報告
 ├── data/                       範例資料：馬蹄蟹、鱷魚、葡萄牙高中生
 ├── decision-tree.png           決策樹圖
 ├── categorical-modeling.zip    打包好的 Skill，可直接上傳到 Claude
@@ -159,6 +189,11 @@ pip install numpy pandas scipy statsmodels matplotlib
 ```
 
 ```bash
+# 整理資料格式（每個觀察對象一欄、次數表、交叉表 → 每個觀察對象一列）
+python scripts/run_model.py tidy        --csv raw.csv --layout transpose --file tidy.csv
+python scripts/run_model.py tidy        --csv raw.csv --layout freq --freq count --file tidy.csv
+python scripts/run_model.py tidy        --csv raw.csv --layout crosstab --keep gender,party --y ideology --file tidy.csv
+
 # 描述資料、畫圖
 python scripts/run_model.py describe    --csv data.csv --vars y,a,b
 python scripts/run_model.py plot        --csv data.csv --y y --x a
@@ -177,6 +212,8 @@ python scripts/run_model.py report      --out output/q1,output/q1_compare --summ
 
 | 選項 | 意義 |
 |---|---|
+| `--layout` | `tidy` 的原始格式：`transpose`（每個對象一欄）、`freq`（次數表）、`crosstab`（交叉表） |
+| `--freq`、`--keep` | `tidy` 的次數欄位；交叉表中屬於解釋變數的欄位（其他欄是結果的類別） |
 | `--x` | 解釋變數，多個用逗號分隔 |
 | `--numeric` | 要當數值分數的變數；沒列的文字或代碼變數都當類別 |
 | `--ref` | 類別型解釋變數的參考類別，例如 `--ref sex=F,school=GP` |

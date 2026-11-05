@@ -1,0 +1,11 @@
+原始資料：4 列 × 7 欄（格式：crosstab）
+結果變數 ideology 的類別（依原欄位順序）：y1、y2、y3、y4、y5；次數合計 661
+轉換後：661 列 × 3 欄，每一列是一個觀察對象；欄位：gender、party、ideology
+前 5 列：
+gender party ideology
+female   dem       y1
+female   dem       y1
+female   dem       y1
+female   dem       y1
+female   dem       y1
+已存成：polviews_tidy.csv（之後的指令都用這個檔案）
