@@ -6,7 +6,7 @@ description: >-
   或明確提到 logistic 迴歸、logit、勝算比 odds ratio、多元 logistic、multinomial、
   baseline-category logit、ordinal logistic、累積 logit、cumulative logit、proportional odds、
   比例勝算、ROC、AUC、模型比較、AIC 時，使用本 skill 判斷該用哪個模型、說明假設與限制、
-  用 Python（statsmodels）實際配適與比較模型，以白話解釋勝算比與預測機率，並可產出分析報告。
+  用內附的 Python 程式（只需要 numpy、pandas，不需要網路或安裝套件）實際配適與比較模型，以白話解釋勝算比與預測機率，並可產出分析報告。
 ---
 
 # 類別結果模型顧問
@@ -39,7 +39,11 @@ description: >-
 3. 使用者沒要求的模型、檢定或比較，不要「順便」多做；可以**建議**，但要等同意。
 4. **所有數字都由 `scripts/run_model.py` 計算**，絕不心算或憑空給數字；解釋時只能使用程式輸出的數字。
    描述圖形時只能引用 `plot` 印出的比例，不可從圖上估讀。
+   **不可以自己臨時寫迴歸、檢定或任何統計計算的程式**（包括用 numpy、statsmodels、scikit-learn、scipy 自己配適），
+   也不可以修改 `scripts/` 裡的程式；一律呼叫 `scripts/run_model.py`。程式出錯時，把錯誤訊息用白話告訴使用者，不要改用自己寫的程式代替。
 5. 每則回覆結尾都用**選擇題**列出下一步，並標記推薦的選項（見下方「下一步的選項」），然後停下來等使用者選擇。
+6. **不要安裝任何套件**（不要執行 `pip install`，環境通常沒有網路）。本 Skill 只需要 numpy 與 pandas；
+   沒有 matplotlib 時照樣計算，只是不出圖（程式會自動處理）。
 
 ## 三種工作模式
 
@@ -71,8 +75,17 @@ description: >-
 
 ## 回答流程
 
-第一次執行前，如果缺少 statsmodels，先執行 `pip install statsmodels`（必要時加 `--break-system-packages`）。
 使用者上傳的檔案通常在 `/mnt/user-data/uploads/`；本 Skill 的資料夾就是 `SKILL.md` 所在的資料夾。
+
+### 步驟 0：檢查執行環境（每個對話第一次分析前執行一次）
+
+```bash
+python <skill 資料夾>/scripts/run_model.py check
+```
+
+- 程式會列出可用的套件，並用內附資料和 R 的結果比對。看到「全部通過」才繼續；不必把這段輸出貼給使用者，只要一句「計算環境檢查通過」。
+- 如果出現「不通過」或找不到 numpy、pandas：停止分析，把訊息告訴使用者，**不要安裝套件，也不要自己寫程式代替**。
+- 如果顯示沒有 matplotlib：照常分析，但告訴使用者這個環境不會產生圖。
 
 ### 步驟 1：描述資料，送出「確認清單」（一則訊息完成）
 
@@ -188,10 +201,14 @@ python <skill 資料夾>/scripts/run_model.py report --out output/q1,output/q1_c
 | `PO_VIOLATED` | 比例勝算假設不成立，單一勝算比可能過度簡化，各切點的效果可能不同（§6.3.2）；**不要**建議把結果壓成兩類 |
 | `NOT_NESTED` | 兩個模型不是巢狀，不能用概似比檢定，只能比較 AIC（§5.1） |
 | `MISSING` | 排除了幾筆缺失資料；只有缺失完全隨機時才不會造成偏誤 |
+| `NOT_CONVERGED` | 模型沒有收斂，程式不列出係數（輸出 NA）；建議減少解釋變數或合併稀少類別，**不要**自己另外寫程式重算 |
+
+分離時，程式會把估計值為無限大的係數輸出成 `Inf`（或 `-Inf`），標準誤、Wald 檢定、信賴區間輸出 `NA`。
+說明時就照這樣講（例如「這個係數的估計值是無限大」），**不要**拿別的數字代替，也不要說「勝算比非常大，約為某個數字」。
 
 ## 溝通風格
 
 - 用使用者提問的語言回答（中文提問就用繁體中文）；統計術語第一次出現時附英文。
 - 先給結論，再補理由與細節。
 - 每個方法附上教科書節號（例如 §4.2），讓使用者可以查證。
-- 需要時給出可直接執行的程式碼（Python 的 statsmodels，或課本使用的 R），並說明每個參數的意義。
+- 使用者想自己在電腦上驗證時，可以提供課本使用的 R 程式碼（例如 `glm`、`VGAM::vglm`、`MASS::polr`）並說明參數意義；這只是讓使用者自己執行，你在這個環境中的計算一律用 `run_model.py`。

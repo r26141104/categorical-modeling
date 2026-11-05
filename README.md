@@ -2,7 +2,7 @@
 
 一個 Claude Agent Skill：**類別結果變數的模型分析顧問**。
 
-上傳資料、用平常說話的方式提問，Skill 會判斷該用哪一個模型、說明假設與限制，用 Python（statsmodels）實際配適，並以白話解釋勝算比與預測機率；還能**比較兩個模型**，最後把分析**整理成一份 HTML 報告**。
+上傳資料、用平常說話的方式提問，Skill 會判斷該用哪一個模型、說明假設與限制，用內附的 Python 程式實際配適（**不需要網路、不需要安裝任何套件**），並以白話解釋勝算比與預測機率；還能**比較兩個模型**，最後把分析**整理成一份 HTML 報告**。
 
 統計內容依據 Agresti, A. (2019). *An Introduction to Categorical Data Analysis* (3rd ed.) 第 4–6 章。
 
@@ -29,9 +29,12 @@
 
 **Claude App（網頁版、桌面版）**
 
-1. **Settings → Capabilities**：確認「程式碼執行與檔案建立」（Code execution and file creation）已開啟
+1. **Settings → Capabilities**：確認「程式碼執行與檔案建立」（Code execution and file creation）已開啟。**網路存取不用開**，Skill 不需要網路。
 2. **Customize → Skills**：按 **＋** → **Create skill** → **Upload a skill**，上傳 `categorical-modeling.zip`
 3. 確認 Skill 已開啟，開一個新對話，上傳資料檔後提問
+
+Skill 只用 Claude 程式執行環境本來就有的 numpy、pandas（matplotlib 用來畫圖，沒有也能算）。模型配適是自己寫的程式（`scripts/catfit.py`），
+**不需要 statsmodels、scipy，也不會執行 `pip install`**。每個對話第一次分析前，Skill 會先執行 `run_model.py check`，用內附資料和 R 的結果比對，確認這個環境算得正確。
 
 **Claude Code**：把 Skill 資料夾複製到 `<你的專案>/.claude/skills/categorical-modeling/`，或個人層級的 `~/.claude/skills/categorical-modeling/`。
 
@@ -132,10 +135,16 @@ flowchart TD
 
 - **未經同意不畫圖、不配適、不比較、不產生報告**；資料是否獨立一定讓使用者確認。
 - **所有數字都由程式計算**，Claude 不自己計算、修改數字，也不從圖上估讀。
+- **Claude 不可以臨時自己寫迴歸程式**，一律用 `scripts/` 裡的程式；也不會安裝任何套件。
 
 ## 實測與驗證
 
-計算用 Python（statsmodels），在 Claude 的雲端環境就能直接執行，不需要安裝 R。為了確認數字正確，另外用 R（`glm`、`MASS`、`ordinal`、`nnet`）獨立重算（[`report/verify.R`](report/verify.R)）。
+計算用內附的 Python 程式 [`scripts/catfit.py`](scripts/catfit.py)：二元 logistic、baseline-category logit、累積 logit 都用 Newton-Raphson 自己配適，只需要 numpy。
+所有輸出（係數、標準誤、Wald 檢定、profile likelihood／Wald 信賴區間、deviance、概似比檢定、AIC、預測機率、AUC）都和 statsmodels 與 R（`glm`、`VGAM::vglm`、`ordinal::clm`、`pROC`）比對過：
+**146 項、1571 個數字，差距都小於 1e-6**（[`tests/RESULTS.md`](tests/RESULTS.md)）。比對時刻意擋掉 statsmodels、scipy，證明 Skill 執行時不需要它們。
+完全分離（§5.3）時，程式會偵測到並把無限大的估計值輸出成 `Inf`、標準誤與信賴區間輸出 `NA`，不會給看起來正常的數字。
+
+實測的數字另外用 R（`glm`、`MASS`、`ordinal`、`nnet`）獨立重算（[`report/verify.R`](report/verify.R)）。
 
 | | 第一次 | 第二次 | 第三次 |
 |---|---|---|---|
@@ -158,7 +167,8 @@ categorical-modeling/
 │   ├── methods.md              三個模型速查：H0、統計量、效果量、指令
 │   └── textbook-methods.md     課本細節：假設、公式、注意事項（附節號）
 ├── scripts/
-│   └── run_model.py            所有計算：整理格式、描述、畫圖、配適、比較模型、產生報告
+│   ├── run_model.py            指令：整理格式、描述、畫圖、配適、比較模型、產生報告、環境檢查
+│   └── catfit.py               模型配適（Newton-Raphson、分離偵測、卡方與常態分布），只用 numpy
 ├── data/                       範例資料：馬蹄蟹、鱷魚、葡萄牙高中生
 ├── decision-tree.png           決策樹圖
 ├── categorical-modeling.zip    打包好的 Skill，可直接上傳到 Claude
@@ -166,6 +176,13 @@ categorical-modeling/
 │  ── 說明網頁 ──
 ├── make-skill-tutorial.qmd / .html  製作教學
 ├── _nav/                            各網頁上方的導覽列
+│
+│  ── 比對測試（只在本機執行，不放進 zip）──
+├── tests/
+│   ├── test_against_reference.py   和 statsmodels、R 比對每個數字（差距要小於 1e-6）
+│   ├── run_without_statsmodels.py  擋掉 statsmodels、scipy 後執行 Skill（模擬 claude.ai）
+│   ├── make_reference_R.R          產生 R 的參考值 reference_R.json
+│   └── RESULTS.md                  比對結果
 │
 │  ── 報告與實測 ──
 └── report/
@@ -177,18 +194,19 @@ categorical-modeling/
     └── skill-test/             三次實測：round1、round2、round3
 ```
 
+重新跑比對測試（需要 statsmodels、scipy、scikit-learn；R 的參考值已附在 `tests/reference_R.json`）：`python tests/test_against_reference.py`
+
 報告與網頁都可以重新產生：在對應的資料夾執行 `quarto render 檔名.qmd`（Part 2 報告需要 R 與 VGAM、car、pROC、ggplot2、yaml、jsonlite 套件）。
 
 <details>
 <summary><b>進階：直接執行 run_model.py</b></summary>
 
-需要 Python 3 與 `numpy`、`pandas`、`scipy`、`statsmodels`、`matplotlib`。在 Claude App 裡執行時，缺少的套件 Skill 會自動安裝：
+只需要 Python 3 與 `numpy`、`pandas`（要畫圖再加 `matplotlib`）。不需要 statsmodels、scipy，也不需要網路。
 
 ```bash
-pip install numpy pandas scipy statsmodels matplotlib
-```
+# 檢查環境，並用內附資料和 R 的結果比對
+python scripts/run_model.py check
 
-```bash
 # 整理資料格式（每個觀察對象一欄、次數表、交叉表 → 每個觀察對象一列）
 python scripts/run_model.py tidy        --csv raw.csv --layout transpose --file tidy.csv
 python scripts/run_model.py tidy        --csv raw.csv --layout freq --freq count --file tidy.csv

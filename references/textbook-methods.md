@@ -95,7 +95,7 @@ $$\log\frac{\pi_j(x)}{\pi_J(x)} = \alpha_j + \beta_j x, \quad j = 1,\dots,J-1, \
 $$\text{logit}\,P(Y \le j \mid x) = \alpha_j + \beta x, \quad j = 1,\dots,J-1, \qquad \alpha_1 < \alpha_2 < \cdots < \alpha_{J-1} .$$
 
 - 所有切點共用 $\beta$（比例勝算）：$x$ 增加 1，任何切點的累積勝算乘以 $e^{\beta}$；「落在較高類別」的勝算乘以 $e^{-\beta}$
-- 參數化注意：statsmodels 的 `OrderedModel` 與 `MASS::polr` 為 $\theta_j - \beta x$，正負號和課本相反
+- 參數化注意：本 Skill 的程式與 `MASS::polr`、`ordinal::clm` 為 $\theta_j - \beta x$，正負號和課本相反
 
 ### 3.2 假設
 

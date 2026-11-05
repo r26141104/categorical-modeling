@@ -16,7 +16,7 @@
 | 效果量 | 勝算比 $e^{\beta_j}$；預測機率 $\hat\pi(x)$ |
 | 信賴區間 | profile likelihood（分離時改用 Wald），取指數得勝算比區間 |
 | 預測能力 | ROC 曲線下面積 AUC（concordance index，§4.6.2） |
-| Python | `statsmodels.GLM(y, X, family=Binomial())`；LR 檢定 = 兩個模型的 deviance 差 |
+| 計算 | `run_model.py logistic`（`catfit.logit_fit`：Newton-Raphson）；LR 檢定 = 兩個模型的 deviance 差 |
 | 課本 R 函式 | `glm(y ~ x, family = binomial)`、`confint()`、`drop1(fit, test = "LRT")` |
 | 指令 | `run_model.py logistic --csv … --y … --x … --success … --numeric …` |
 
@@ -34,7 +34,7 @@
 | 統計量 | $LR \sim \chi^2_{J-1}$（每個解釋變數的參數個數 × 1）；個別方程式用 Wald $z$ |
 | 效果量 | 每條方程式的勝算比 $e^{\beta_j}$：「第 j 類 vs 基準類別」；各類別的預測機率 |
 | 注意 | 換基準類別不影響配適與預測機率；任兩類的比較 = 兩條方程式相減 |
-| Python | `statsmodels.MNLogit(y, X)`（以代碼 0 的類別為基準，程式會把基準類別排在第一個） |
+| 計算 | `run_model.py multinomial`（`catfit.mnlogit_fit`：Newton-Raphson；程式會把基準類別排在第一個） |
 | 課本 R 函式 | `VGAM::vglm(y ~ x, family = multinomial(refLevel = "基準"))` |
 | 指令 | `run_model.py multinomial --csv … --y … --x … --baseline …` |
 
@@ -50,9 +50,9 @@
 | 統計量 | $LR \sim \chi^2_1$（每個解釋變數只有 1 個參數） |
 | 效果量 | 「落在較高類別」的勝算比；各類別的預測機率 |
 | 假設檢查 | 比例勝算：和各切點斜率不同的模型做 LR 比較，$df = (J-2) \times p$（§6.3.2） |
-| 參數化 | 課本寫 $\alpha_j + \beta x$（較高類別的勝算比 $= e^{-\beta}$）；statsmodels 與 `MASS::polr` 寫 $\theta_j - \beta x$（較高類別的勝算比 $= e^{\beta}$）。`run_model.py` 輸出的 `or_higher` 一律是「落在較高類別」的方向 |
+| 參數化 | 課本寫 $\alpha_j + \beta x$（較高類別的勝算比 $= e^{-\beta}$）；本 Skill（`catfit.cumlogit_fit`）與 `MASS::polr`、`ordinal::clm` 寫 $\theta_j - \beta x$（較高類別的勝算比 $= e^{\beta}$）。`run_model.py` 輸出的 `or_higher` 一律是「落在較高類別」的方向 |
 | 注意 | 不要把有序結果壓成兩類 |
-| Python | `statsmodels.miscmodels.ordinal_model.OrderedModel(y, X, distr="logit")`；比例勝算檢定的一般模型由 `run_model.py` 以最大概似法自行配適 |
+| 計算 | `run_model.py ordinal`（`catfit.cumlogit_fit`：Newton-Raphson，觀察資訊矩陣）；比例勝算檢定的一般模型（每個切點各有斜率）也由同一個函數以最大概似法配適 |
 | 課本 R 函式 | `VGAM::vglm(y ~ x, family = cumulative(parallel = TRUE))` |
 | 指令 | `run_model.py ordinal --csv … --y … --x … --levels 低,…,高` |
 

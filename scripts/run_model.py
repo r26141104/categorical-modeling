@@ -13,9 +13,11 @@
   python scripts/run_model.py ordinal     --csv data.csv --y Y --x a,b [--levels 低,…,高] [--numeric a] [--ref b=類別] [--out output]
   python scripts/run_model.py compare     --type logistic --csv data.csv --y Y --x a,b --numeric a --x2 a,b --numeric2 none [--out output]
   python scripts/run_model.py report      --out output/q1,output/q2 [--title 標題] [--summary 摘要.md] [--file report.html]
+  python scripts/run_model.py check       （檢查執行環境，並用內附資料確認計算正確）
 
 每個分析都會在 --out 資料夾（預設 output/）寫出 result.json 與圖檔，並在畫面印出摘要。
-需要的套件：numpy、pandas、scipy、statsmodels、matplotlib（缺少時：pip install statsmodels）
+只需要 numpy 與 pandas（matplotlib 用來畫圖；沒有也能計算，只是不出圖）。
+不需要 statsmodels、scipy，也不需要網路、不需要安裝任何套件：模型配適都在同一個資料夾的 catfit.py。
 """
 
 import argparse
@@ -27,24 +29,27 @@ import warnings
 
 import numpy as np
 import pandas as pd
-from scipy import optimize, stats
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import catfit as cf                                  # 自己寫的配適函數（只用 numpy）
 
 try:
-    import statsmodels.api as sm
-    from statsmodels.miscmodels.ordinal_model import OrderedModel
-except ImportError:  # pragma: no cover
-    sys.exit("需要 statsmodels 套件：請先執行 pip install statsmodels")
-
-import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-from matplotlib import font_manager
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    import matplotlib.ticker
+    from matplotlib import font_manager
+    HAVE_MPL = True
+except Exception:                                    # 沒有 matplotlib 也能計算，只是不出圖
+    HAVE_MPL = False
 
 warnings.filterwarnings("ignore")
 
 # ---------------------------------------------------------------- 圖表字型：有中文字型就用中文標籤，否則用英文
 
 def _setup_font():
+    if not HAVE_MPL:
+        return False
     wanted = ["Noto Sans CJK TC", "Noto Sans CJK SC", "Noto Sans CJK JP", "Microsoft JhengHei", "Microsoft YaHei",
               "PingFang TC", "Heiti TC", "WenQuanYi Micro Hei", "WenQuanYi Zen Hei", "Source Han Sans TC", "SimHei"]
     have = {f.name for f in font_manager.fontManager.ttflist}
@@ -62,6 +67,10 @@ def L(zh, en):
 # ---------------------------------------------------------------- 共用工具
 
 def fmt(x, k=3):
+    if x is None or (isinstance(x, float) and math.isnan(x)):
+        return "NA"
+    if isinstance(x, float) and math.isinf(x):
+        return "∞" if x > 0 else "−∞"
     return f"{x:.{k}f}"
 
 def fmt_p(p):
@@ -159,6 +168,8 @@ def write_result(res, out):
     print(f"\n結果已存到：{os.path.abspath(path)}")
 
 def savefig(fig, out, name):
+    if fig is None:
+        return None
     os.makedirs(out, exist_ok=True)
     fig.savefig(os.path.join(out, name), dpi=120, bbox_inches="tight", facecolor="white")
     plt.close(fig)
@@ -350,13 +361,14 @@ def cmd_plot(a):
     d = read_any(a.csv)
     out = a.out or "output"
     need_cols(d, [a.y] + ([a.x] if a.x else []))
-    fig, ax = plt.subplots(figsize=(6.5, 4))
+    fig, ax = plt.subplots(figsize=(6.5, 4)) if HAVE_MPL else (None, None)
     if not a.x:
         vc = d[a.y].map(as_str).value_counts()
         vc = vc.reindex(natural_levels(list(vc.index)))
         print(f"{a.y} 的分布：" + "、".join(f"{k} {n}（{n / vc.sum():.1%}）" for k, n in vc.items()))
-        ax.bar(vc.index, vc.values, color="#1f3a5f")
-        ax.set_xlabel(a.y); ax.set_ylabel(L("人數", "Count"))
+        if HAVE_MPL:
+            ax.bar(vc.index, vc.values, color="#1f3a5f")
+            ax.set_xlabel(a.y); ax.set_ylabel(L("人數", "Count"))
         name = f"dist_{a.y}.png"
     else:
         xv = d[a.x]
@@ -368,13 +380,17 @@ def cmd_plot(a):
         print(f"{a.y} 依 {a.x} 分組的比例（每一列合計 100%；圖上的數字一律以這張表為準）")
         for g in tab.index:
             print(f"- {a.x} = {g}（n = {int(cnt.loc[g].sum())}）：" + "、".join(f"{c} {tab.loc[g, c]:.1%}" for c in tab.columns))
-        bottom = np.zeros(len(tab))
-        for c in tab.columns:
-            ax.bar(tab.index, tab[c].values, bottom=bottom, label=c, edgecolor="white")
-            bottom += tab[c].values
-        ax.yaxis.set_major_formatter(matplotlib.ticker.PercentFormatter(1.0))
-        ax.set_xlabel(a.x); ax.set_ylabel(L("比例", "Proportion")); ax.legend(title=a.y, bbox_to_anchor=(1.02, 1), loc="upper left")
+        if HAVE_MPL:
+            bottom = np.zeros(len(tab))
+            for c in tab.columns:
+                ax.bar(tab.index, tab[c].values, bottom=bottom, label=c, edgecolor="white")
+                bottom += tab[c].values
+            ax.yaxis.set_major_formatter(matplotlib.ticker.PercentFormatter(1.0))
+            ax.set_xlabel(a.x); ax.set_ylabel(L("比例", "Proportion")); ax.legend(title=a.y, bbox_to_anchor=(1.02, 1), loc="upper left")
         name = f"bar_{a.y}_by_{a.x}.png"
+    if not HAVE_MPL:
+        print("（這個環境沒有 matplotlib，只印出比例表、不畫圖。）")
+        return
     ax.spines[["top", "right"]].set_visible(False)
     savefig(fig, out, name)
     print(f"圖已存到：{os.path.abspath(os.path.join(out, name))}")
@@ -383,16 +399,41 @@ def cmd_plot(a):
 
 def auc_value(y, p):
     """ROC 曲線下面積 = concordance index（§4.6.2），以等級計算，同分算 1/2。"""
-    r = stats.rankdata(p)
+    r = cf.rankdata(np.round(p, 12))                 # 四捨五入到 1e-12：解釋變數相同的人，預測機率一定算成同分
     n1, n0 = y.sum(), len(y) - y.sum()
     return (r[y == 1].sum() - n1 * (n1 + 1) / 2) / (n1 * n0)
 
+class LogitRes:
+    """catfit.logit_fit 的結果，加上變數名稱（介面和原本的程式相同）。"""
+    def __init__(self, f, cols):
+        self.f, self.cols, self.status = f, list(cols), f.status
+        self.params = pd.Series(f.params, index=self.cols)
+        self.bse = pd.Series(f.se, index=self.cols)
+        self.tvalues = self.params / self.bse
+        self.pvalues = pd.Series([2 * cf.norm_sf(abs(z)) for z in self.tvalues], index=self.cols)
+        self.llf, self.deviance = f.llf, f.deviance
+        self.sep_terms = [c for c, s in zip(self.cols, f.sep) if s] if f.status == "separation" else []
+
+    def predict(self, Xn):
+        return cf.logit_predict(self.f.params, np.asarray(Xn, dtype=float))
+
+    def cov_params(self):
+        return pd.DataFrame(self.f.cov, index=self.cols, columns=self.cols)
+
 def fit_logit(y, X, offset=None):
-    return sm.GLM(y, X, family=sm.families.Binomial(), offset=offset).fit()
+    return LogitRes(cf.logit_fit(y, X.values, offset), X.columns)
+
+NOT_CONVERGED_MSG = "模型沒有收斂，估計值不可信，所以不列出係數；請減少解釋變數、合併稀少類別後再試。"
+
+def bad_coef(est, status):
+    """分離（§5.3）時估計值是正負無限大；沒有收斂時不給數字。標準誤、Wald 檢定、信賴區間都沒有意義。"""
+    inf = math.copysign(math.inf, est) if status == "separation" else math.nan
+    return {"estimate": inf, "se": math.nan, "z": math.nan, "p": math.nan,
+            "or": sexp(inf) if status == "separation" else math.nan, "or_lower": math.nan, "or_upper": math.nan}
 
 def profile_ci(y, X, fit, level=0.95):
     """profile likelihood 信賴區間（§4.2.3）：找使 2[ℓ(β̂) − ℓ_profile(b)] = χ²₁ 臨界值的 b。"""
-    crit = stats.chi2.ppf(level, 1)
+    crit = cf.chi2_ppf(level, 1)
     llmax = fit.llf
     out = np.full((X.shape[1], 2), np.nan)
     for j, col in enumerate(X.columns):
@@ -401,10 +442,12 @@ def profile_ci(y, X, fit, level=0.95):
         def g(val):
             off = X[col].values * val
             if others.shape[1] == 0:
-                p = 1 / (1 + np.exp(-off))
-                ll = np.sum(y * np.log(p) + (1 - y) * np.log(1 - p))
+                ll = cf.logit_loglik(y, off)
             else:
-                ll = fit_logit(y, others, offset=off).llf
+                fo = fit_logit(y, others, offset=off)
+                if fo.status == "not_converged":
+                    raise ValueError("profile 配適沒有收斂")
+                ll = fo.llf
             return 2 * (llmax - ll) - crit
         for side, sgn in ((0, -1), (1, 1)):
             step = max(se, 1e-3)
@@ -414,7 +457,7 @@ def profile_ci(y, X, fit, level=0.95):
                 lo, hi = hi, hi + sgn * step
                 step *= 1.6
                 k += 1
-            out[j, side] = optimize.brentq(g, min(lo, hi), max(lo, hi)) if k < 60 else (np.inf * sgn)
+            out[j, side] = cf.brentq(g, min(lo, hi), max(lo, hi)) if k < 60 else (np.inf * sgn)
     return out
 
 def cmd_logistic(a):
@@ -435,43 +478,42 @@ def cmd_logistic(a):
     des = Design(d, x, split_arg(a.numeric), a.ref)
     X = des.matrix(d)
 
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
-        fit = fit_logit(y, X)
-    sm_sep = any("Separation" in type(w.message).__name__ or "separation" in str(w.message).lower() for w in caught)
+    fit = fit_logit(y, X)
     fit0 = fit_logit(y, X[["(Intercept)"]])
     params, bse = fit.params, fit.bse
 
-    sep_terms = [t for t in X.columns if abs(params[t]) > 10 and bse[t] > 50]
-    if sm_sep and not sep_terms:
-        sep_terms = [t for t in X.columns if t != "(Intercept)"]
+    sep_terms = fit.sep_terms
+    bad = set(sep_terms) if fit.status == "separation" else (set(X.columns) if fit.status == "not_converged" else set())
+    if fit.status == "not_converged":
+        warns.append({"code": "NOT_CONVERGED", "message": NOT_CONVERGED_MSG})
     if sep_terms:
         warns.append({"code": "SEPARATION", "message": f"可能有完全或準完全分離：{'、'.join(sep_terms)} 的估計值其實是無限大，"
                       "Wald 檢定與標準誤沒有意義，請改看概似比檢定（§5.3）。"})
     ci_type = "profile likelihood"
     try:
-        if sep_terms:
+        if fit.status != "ok":
             raise ValueError
         ci = profile_ci(y, X, fit)
     except Exception:
         ci_type = "Wald"
         ci = np.column_stack([params - 1.96 * bse, params + 1.96 * bse])
     coefs = [{"term": t, "label": des.label(t) if t != "(Intercept)" else "(Intercept)",
-              "estimate": params[t], "se": bse[t], "z": fit.tvalues[t], "p": fit.pvalues[t],
-              "or": sexp(params[t]), "or_lower": sexp(ci[i, 0]), "or_upper": sexp(ci[i, 1])}
+              **(bad_coef(params[t], fit.status) if t in bad else
+                 {"estimate": params[t], "se": bse[t], "z": fit.tvalues[t], "p": fit.pvalues[t],
+                  "or": sexp(params[t]), "or_lower": sexp(ci[i, 0]), "or_upper": sexp(ci[i, 1])})}
              for i, t in enumerate(X.columns)]
 
     lr = []
     for v in x:
         f0 = fit_logit(y, des.matrix(d, drop=v))
-        s = f0.deviance - fit.deviance
+        s = f0.deviance - fit.deviance if "not_converged" not in (f0.status, fit.status) else math.nan
         df = len(des.cols[v])
-        lr.append({"variable": v, "lr": s, "df": df, "p": stats.chi2.sf(s, df)})
-    ov_lr, ov_df = fit0.deviance - fit.deviance, X.shape[1] - 1
-    overall = {"lr": ov_lr, "df": ov_df, "p": stats.chi2.sf(ov_lr, ov_df)}
+        lr.append({"variable": v, "lr": s, "df": df, "p": cf.chi2_sf(s, df)})
+    ov_lr, ov_df = (fit0.deviance - fit.deviance if fit.status != "not_converged" else math.nan), X.shape[1] - 1
+    overall = {"lr": ov_lr, "df": ov_df, "p": cf.chi2_sf(ov_lr, ov_df)}
 
     phat = np.asarray(fit.predict(X))
-    auc = auc_value(y, phat)
+    auc = auc_value(y, phat) if fit.status != "not_converged" else math.nan
     n_min, n_par = int(min(y.sum(), len(y) - y.sum())), X.shape[1] - 1
     if n_min / max(1, n_par) < 10:
         warns.append({"code": "FEW_EVENTS", "message": f"較少的那一類只有 {n_min} 個，模型有 {n_par} 個參數（每個參數不到 10 個），估計可能不穩定（§5.1.1）。"})
@@ -483,11 +525,12 @@ def cmd_logistic(a):
         vals, names = des.vary(d, v)
         pr = fit.predict(des.matrix(des.newdata(d, v, vals)))
         for nm, val, p in zip(names, vals, pr):
-            effects.append({"variable": v, "value": nm, "at": as_str(val), "probability": float(p)})
+            effects.append({"variable": v, "value": nm, "at": as_str(val),
+                            "probability": float(p) if fit.status != "not_converged" else math.nan})
 
     plots = []
     num = [v for v in x if v in des.numeric]
-    if num:
+    if num and HAVE_MPL:
         v = num[0]
         s = pd.to_numeric(d[v])
         g = np.linspace(s.min(), s.max(), 100)
@@ -496,7 +539,8 @@ def cmd_logistic(a):
         se_eta = np.sqrt(np.einsum("ij,jk,ik->i", Xg.values, fit.cov_params().values, Xg.values))
         expit = lambda z: 1 / (1 + np.exp(-z))
         fig, ax = plt.subplots(figsize=(6.5, 4))
-        ax.fill_between(g, expit(eta - 1.96 * se_eta), expit(eta + 1.96 * se_eta), color="#1f3a5f", alpha=0.15)
+        if fit.status == "ok":                         # 分離或沒收斂時，信賴帶沒有意義，不畫
+            ax.fill_between(g, expit(eta - 1.96 * se_eta), expit(eta + 1.96 * se_eta), color="#1f3a5f", alpha=0.15)
         ax.plot(g, expit(eta), color="#1f3a5f", lw=2)
         ax.set_ylim(0, 1); ax.yaxis.set_major_formatter(matplotlib.ticker.PercentFormatter(1.0))
         ax.set_xlabel(v); ax.set_ylabel(L(f"預測「{success}」的機率", f"P({a.y} = {success})"))
@@ -507,13 +551,14 @@ def cmd_logistic(a):
     yy = y[o]
     fpr = np.concatenate([[0], np.cumsum(1 - yy) / (1 - yy).sum()])
     tpr = np.concatenate([[0], np.cumsum(yy) / yy.sum()])
-    fig, ax = plt.subplots(figsize=(5, 5))
-    ax.plot([0, 1], [0, 1], ls="--", color="grey")
-    ax.step(fpr, tpr, color="#b2182b", lw=2, where="post")
-    ax.text(0.55, 0.15, f"AUC = {auc:.3f}", fontsize=13)
-    ax.set_xlabel(L("1 − 特異度", "1 − specificity")); ax.set_ylabel(L("敏感度", "Sensitivity")); ax.set_aspect("equal")
-    ax.spines[["top", "right"]].set_visible(False)
-    plots.append(savefig(fig, out, "roc.png"))
+    if HAVE_MPL:
+        fig, ax = plt.subplots(figsize=(5, 5))
+        ax.plot([0, 1], [0, 1], ls="--", color="grey")
+        ax.step(fpr, tpr, color="#b2182b", lw=2, where="post")
+        ax.text(0.55, 0.15, f"AUC = {auc:.3f}", fontsize=13)
+        ax.set_xlabel(L("1 − 特異度", "1 − specificity")); ax.set_ylabel(L("敏感度", "Sensitivity")); ax.set_aspect("equal")
+        ax.spines[["top", "right"]].set_visible(False)
+        plots.append(savefig(fig, out, "roc.png"))
 
     print(f"【二元 logistic 迴歸】結果變數 {a.y}，成功類別 = {success}；n = {len(y)}（成功 {int(y.sum())}）")
     print(f"整體檢定（所有解釋變數 vs 只有截距）：LR = {fmt(ov_lr, 2)}，df = {ov_df}，P {fmt_p(overall['p'])}")
@@ -542,6 +587,8 @@ def cmd_logistic(a):
 # ---------------------------------------------------------------- 多類別模型共用
 
 def plot_categories(eff, v, cats, ordered, out, ylab):
+    if not HAVE_MPL:
+        return None
     rows = [e for e in eff if e["variable"] == v]
     groups = [r["value"] for r in rows]
     if ordered:
@@ -587,33 +634,40 @@ def cmd_multinomial(a):
     base = a.baseline if a.baseline else default_baseline(lv)
     if base not in lv:
         sys.exit(f"--baseline 必須是 {a.y} 的類別之一：{'、'.join(lv)}")
-    order = [base] + [k for k in lv if k != base]          # statsmodels 以第一類（代碼 0）為基準
+    order = [base] + [k for k in lv if k != base]          # 代碼 0 是基準類別
     yc = ys.map({k: i for i, k in enumerate(order)}).values
     des = Design(d, x, split_arg(a.numeric), a.ref)
     X = des.matrix(d)
-    fit = sm.MNLogit(yc, X).fit(method="newton", maxiter=200, disp=False)
-    fit0 = sm.MNLogit(yc, X[["(Intercept)"]]).fit(method="newton", maxiter=200, disp=False)
+    J = len(lv)
+    fit = cf.mnlogit_fit(yc, X.values, J)
+    fit0 = cf.mnlogit_fit(yc, X[["(Intercept)"]].values, J)
     others = order[1:]
     coefs = []
     for j, k in enumerate(others):                          # 依 R／VGAM 的慣例，以結果類別的字母順序編號方程式
         eqn = [o for o in lv if o != base].index(k) + 1
         for t in X.columns:
-            b, se = fit.params.iloc[X.columns.get_loc(t), j], fit.bse.iloc[X.columns.get_loc(t), j]
+            i = X.columns.get_loc(t)
+            b, se = fit.params[i, j], fit.se[i, j]
+            bad = fit.status == "not_converged" or (fit.status == "separation" and fit.sep[i, j])
             coefs.append({"term": f"{t}:{eqn}", "equation": f"{k} vs {base}",
                           "label": des.label(t) if t != "(Intercept)" else "(Intercept)",
-                          "estimate": b, "se": se, "z": b / se, "p": 2 * stats.norm.sf(abs(b / se)),
-                          "or": sexp(b), "or_lower": sexp(b - 1.96 * se), "or_upper": sexp(b + 1.96 * se)})
-    ov_lr = 2 * (fit.llf - fit0.llf)
+                          **(bad_coef(b, fit.status) if bad else
+                             {"estimate": b, "se": se, "z": b / se, "p": 2 * cf.norm_sf(abs(b / se)),
+                              "or": sexp(b), "or_lower": sexp(b - 1.96 * se), "or_upper": sexp(b + 1.96 * se)})})
+    ok_ll = fit.status != "not_converged"
+    ov_lr = 2 * (fit.llf - fit0.llf) if ok_ll else math.nan
     ov_df = (X.shape[1] - 1) * (len(lv) - 1)
-    overall = {"lr": ov_lr, "df": ov_df, "p": stats.chi2.sf(ov_lr, ov_df)}
+    overall = {"lr": ov_lr, "df": ov_df, "p": cf.chi2_sf(ov_lr, ov_df)}
     lr = []
     for v in x:
         Xr = des.matrix(d, drop=v)
-        fr = sm.MNLogit(yc, Xr).fit(method="newton", maxiter=200, disp=False)
-        s = 2 * (fit.llf - fr.llf)
+        fr = cf.mnlogit_fit(yc, Xr.values, J)
+        s = 2 * (fit.llf - fr.llf) if ok_ll and fr.status != "not_converged" else math.nan
         df = len(des.cols[v]) * (len(lv) - 1)
-        lr.append({"variable": v, "lr": s, "df": df, "p": stats.chi2.sf(s, df)})
-    if any(abs(c["estimate"]) > 10 and c["se"] > 50 for c in coefs):
+        lr.append({"variable": v, "lr": s, "df": df, "p": cf.chi2_sf(s, df)})
+    if fit.status == "not_converged":
+        warns.append({"code": "NOT_CONVERGED", "message": NOT_CONVERGED_MSG})
+    if fit.status == "separation":
         warns.append({"code": "SEPARATION", "message": "部分係數與標準誤異常大，可能有分離現象（某些組合從未出現某個類別），該係數的 Wald 檢定沒有意義（§5.3）。"})
     counts = ys.value_counts()
     if counts.min() < 10:
@@ -621,10 +675,11 @@ def cmd_multinomial(a):
     eff = []
     for v in x:
         vals, names = des.vary(d, v)
-        pr = np.asarray(fit.predict(des.matrix(des.newdata(d, v, vals))))
+        pr = cf.mnlogit_predict(fit.params, des.matrix(des.newdata(d, v, vals)).values)
         for i, nm in enumerate(names):
-            eff.append({"variable": v, "value": nm, "at": as_str(vals[i]), "probs": {k: float(pr[i, order.index(k)]) for k in lv}})
-    plots = [plot_categories(eff, x[0], lv, False, out, a.y)]
+            eff.append({"variable": v, "value": nm, "at": as_str(vals[i]),
+                        "probs": {k: float(pr[i, order.index(k)]) if ok_ll else math.nan for k in lv}})
+    plots = [p for p in [plot_categories(eff, x[0], lv, False, out, a.y)] if p]
 
     print(f"【baseline-category logit】結果變數 {a.y}（" + "、".join(f"{k} {int(counts[k])}" for k in lv) + f"），基準類別 = {base}；n = {len(yc)}")
     print(f"整體檢定：LR = {fmt(ov_lr, 2)}，df = {ov_df}，P {fmt_p(overall['p'])}")
@@ -646,32 +701,15 @@ def cmd_multinomial(a):
 
 # ---------------------------------------------------------------- 累積 logit（§6.2–6.3）
 
-def ordered_fit(yc, X):
-    return OrderedModel(yc, X, distr="logit").fit(method="bfgs", maxiter=2000, disp=False)
+def ordered_fit(yc, X, J):
+    """比例勝算的累積 logit：logit P(Y ≤ j) = θ_j − x'β（β > 0 代表傾向較高類別）。"""
+    return cf.cumlogit_fit(yc, X.values, J, parallel=True)
 
-def null_loglik(yc):
-    n = np.bincount(yc)
-    n = n[n > 0]
-    return float(np.sum(n * np.log(n / n.sum())))
+null_loglik = cf.null_loglik
 
-def general_cumlogit_loglik(yc, X, J, start_theta, start_beta):
+def general_cumlogit_fit(yc, X, J, start_theta, start_beta):
     """非比例勝算的累積 logit：logit P(Y ≤ j) = θ_j − x'β_j（每個切點各有斜率），用來檢定比例勝算假設（§6.3.2）。"""
-    Xv = X.values
-    p = Xv.shape[1]
-    def nll(par):
-        th = par[:J - 1]
-        B = par[J - 1:].reshape(J - 1, p)
-        eta = th[None, :] - Xv @ B.T                         # n × (J−1)
-        cum = 1 / (1 + np.exp(-eta))
-        cum = np.column_stack([np.zeros(len(yc)), cum, np.ones(len(yc))])
-        pr = cum[np.arange(len(yc)), yc + 1] - cum[np.arange(len(yc)), yc]
-        if np.any(pr <= 0):
-            return 1e10 + 1e6 * np.sum(np.clip(-pr, 0, None))
-        return -np.sum(np.log(pr))
-    x0 = np.concatenate([start_theta, np.tile(start_beta, J - 1)])
-    res = optimize.minimize(nll, x0, method="BFGS", options={"maxiter": 5000, "gtol": 1e-8})
-    res = optimize.minimize(nll, res.x, method="Nelder-Mead", options={"maxiter": 20000, "xatol": 1e-9, "fatol": 1e-10}) if not res.success else res
-    return -res.fun
+    return cf.cumlogit_fit(yc, X.values, J, parallel=False, start=(start_theta, start_beta))
 
 def cmd_ordinal(a):
     d = read_any(a.csv)
@@ -691,30 +729,48 @@ def cmd_ordinal(a):
     yc = ys.map({k: i for i, k in enumerate(lv)}).values.astype(int)
     des = Design(d, x, split_arg(a.numeric), a.ref)
     X = des.matrix(d, const=False)
-    fit = ordered_fit(yc, X)
+    fit = ordered_fit(yc, X, J)
     k = X.shape[1]
-    beta, se = fit.params.iloc[:k], fit.bse.iloc[:k]
-    # statsmodels：P(Y ≤ j) = F(θ_j − x'β)，β > 0 代表傾向較高類別；「落在較高類別」的勝算比 = exp(β)
-    coefs = [{"term": t, "label": des.label(t), "estimate": beta[t], "se": se[t], "z": beta[t] / se[t],
-              "p": 2 * stats.norm.sf(abs(beta[t] / se[t])), "or_higher": sexp(beta[t]),
-              "or_lower": sexp(beta[t] - 1.96 * se[t]), "or_upper": sexp(beta[t] + 1.96 * se[t])} for t in X.columns]
+    beta, se = pd.Series(fit.beta, index=X.columns), pd.Series(fit.se_beta, index=X.columns)
+    # 參數化：logit P(Y ≤ j) = θ_j − x'β，β > 0 代表傾向較高類別；「落在較高類別」的勝算比 = exp(β)
+    def ocoef(i, t):
+        bad = fit.status == "not_converged" or (fit.status == "separation" and fit.sep_beta[i])
+        if bad:
+            b = bad_coef(beta[t], fit.status)
+            return {"term": t, "label": des.label(t), "estimate": b["estimate"], "se": b["se"], "z": b["z"], "p": b["p"],
+                    "or_higher": b["or"], "or_lower": b["or_lower"], "or_upper": b["or_upper"]}
+        return {"term": t, "label": des.label(t), "estimate": beta[t], "se": se[t], "z": beta[t] / se[t],
+                "p": 2 * cf.norm_sf(abs(beta[t] / se[t])), "or_higher": sexp(beta[t]),
+                "or_lower": sexp(beta[t] - 1.96 * se[t]), "or_upper": sexp(beta[t] + 1.96 * se[t])}
+    coefs = [ocoef(i, t) for i, t in enumerate(X.columns)]
+    if fit.status == "not_converged":
+        warns.append({"code": "NOT_CONVERGED", "message": NOT_CONVERGED_MSG})
+    if fit.status == "separation":
+        warns.append({"code": "SEPARATION", "message": "某些解釋變數的組合從未出現某些類別，相關係數的估計值其實是無限大，"
+                      "Wald 檢定與標準誤沒有意義，請改看概似比檢定（§5.3）。"})
+    ok_ll = fit.status != "not_converged"
     ll0 = null_loglik(yc)
-    ov_lr, ov_df = 2 * (fit.llf - ll0), k
-    overall = {"lr": ov_lr, "df": ov_df, "p": stats.chi2.sf(ov_lr, ov_df)}
+    ov_lr, ov_df = (2 * (fit.llf - ll0) if ok_ll else math.nan), k
+    overall = {"lr": ov_lr, "df": ov_df, "p": cf.chi2_sf(ov_lr, ov_df)}
     lr = []
     for v in x:
         Xr = des.matrix(d, drop=v, const=False)
-        llr = ordered_fit(yc, Xr).llf if Xr.shape[1] > 0 else ll0
-        s = 2 * (fit.llf - llr)
+        fr = ordered_fit(yc, Xr, J) if Xr.shape[1] > 0 else None
+        llr = fr.llf if fr is not None else ll0
+        s = 2 * (fit.llf - llr) if ok_ll and (fr is None or fr.status != "not_converged") else math.nan
         df = len(des.cols[v])
-        lr.append({"variable": v, "lr": s, "df": df, "p": stats.chi2.sf(s, df)})
-    theta = fit.model.transform_threshold_params(fit.params.values)[1:-1]
+        lr.append({"variable": v, "lr": s, "df": df, "p": cf.chi2_sf(s, df)})
+    theta = fit.theta
     po = None
     try:
-        ll_gen = general_cumlogit_loglik(yc, X, J, theta, beta.values)
-        s = 2 * (ll_gen - fit.llf)
+        if not ok_ll:
+            raise ValueError
+        gen = general_cumlogit_fit(yc, X, J, theta, beta.values)
+        if gen.status == "not_converged":
+            raise ValueError
+        s = 2 * (gen.llf - fit.llf)
         df = (J - 2) * k
-        po = {"lr": max(s, 0.0), "df": df, "p": stats.chi2.sf(max(s, 0.0), df)}
+        po = {"lr": max(s, 0.0), "df": df, "p": cf.chi2_sf(max(s, 0.0), df)}
     except Exception:
         warns.append({"code": "PO_CHECK_FAILED", "message": "非比例勝算模型無法配適，無法檢定比例勝算假設（§6.3.2）。"})
     if po and po["p"] < 0.05:
@@ -724,10 +780,11 @@ def cmd_ordinal(a):
     for v in x:
         vals, names = des.vary(d, v)
         Xn = des.matrix(des.newdata(d, v, vals), const=False)
-        pr = np.asarray(fit.model.predict(fit.params.values, exog=Xn.values))
+        pr = cf.cumlogit_predict(fit.theta, fit.beta, Xn.values)
         for i, nm in enumerate(names):
-            eff.append({"variable": v, "value": nm, "at": as_str(vals[i]), "probs": {kk: float(pr[i, j]) for j, kk in enumerate(lv)}})
-    plots = [plot_categories(eff, x[0], lv, True, out, a.y)]
+            eff.append({"variable": v, "value": nm, "at": as_str(vals[i]),
+                        "probs": {kk: float(pr[i, j]) if ok_ll else math.nan for j, kk in enumerate(lv)}})
+    plots = [p for p in [plot_categories(eff, x[0], lv, True, out, a.y)] if p]
     counts = ys.value_counts()
 
     print(f"【累積 logit（比例勝算）】結果變數 {a.y}：" + " < ".join(f"{kk} ({int(counts.get(kk, 0))})" for kk in lv) + f"；n = {len(yc)}")
@@ -768,7 +825,8 @@ def fit_loglik(kind, d, ys, a, x, numeric):
             sys.exit(f"--success 必須是 {a.y} 的類別之一：{'、'.join(lv)}")
         y = (ys == success).astype(float).values
         X = des.matrix(d)
-        return fit_logit(y, X).llf, X.shape[1], des
+        f = fit_logit(y, X)
+        return f.llf, X.shape[1], des, f.status
     if kind == "multinomial":
         lv = natural_levels(list(ys.unique()))
         base = a.baseline if a.baseline else default_baseline(lv)
@@ -777,16 +835,18 @@ def fit_loglik(kind, d, ys, a, x, numeric):
         order = [base] + [k for k in lv if k != base]
         yc = ys.map({k: i for i, k in enumerate(order)}).values
         X = des.matrix(d)
-        f = sm.MNLogit(yc, X).fit(method="newton", maxiter=200, disp=False)
-        return f.llf, X.shape[1] * (len(lv) - 1), des
+        f = cf.mnlogit_fit(yc, X.values, len(lv))
+        return f.llf, X.shape[1] * (len(lv) - 1), des, f.status
     lv = split_arg(a.levels) if a.levels else natural_levels(list(ys.unique()))
     bad = sorted(set(ys) - set(lv))
     if bad:
         sys.exit(f"--levels 少了這些類別：{'、'.join(bad)}")
     yc = ys.map({k: i for i, k in enumerate(lv)}).values.astype(int)
     X = des.matrix(d, const=False)
-    ll = ordered_fit(yc, X).llf if X.shape[1] > 0 else null_loglik(yc)
-    return ll, X.shape[1] + len(lv) - 1, des
+    if X.shape[1] == 0:
+        return null_loglik(yc), len(lv) - 1, des, "ok"
+    f = ordered_fit(yc, X, len(lv))
+    return f.llf, X.shape[1] + len(lv) - 1, des, f.status
 
 def is_nested(small, big):
     """small 的每個變數都在 big 裡；small 當類別的變數，在 big 也必須當類別。
@@ -815,7 +875,12 @@ def cmd_compare(a):
     models = []
     for name, x, num in (("A", xa, na), ("B", xb, [v for v in nb])):
         num = [v for v in num if v in x]
-        ll, k, des = fit_loglik(kind, d, ys, a, x, num)
+        ll, k, des, status = fit_loglik(kind, d, ys, a, x, num)
+        if status == "not_converged":
+            warns.append({"code": "NOT_CONVERGED", "message": f"模型 {name} 沒有收斂，對數概似不可信，無法比較。"})
+            ll = math.nan
+        elif status == "separation":
+            warns.append({"code": "SEPARATION", "message": f"模型 {name} 有完全或準完全分離（部分估計值是無限大，§5.3）；對數概似仍然可以用來做概似比檢定與 AIC。"})
         models.append({"name": name, "x": x, "numeric": num,
                        "categorical": [v for v in x if v not in num],
                        "loglik": ll, "n_params": k, "deviance": -2 * ll, "aic": -2 * ll + 2 * k})
@@ -823,18 +888,21 @@ def cmd_compare(a):
     small, big = (A, B) if A["n_params"] <= B["n_params"] else (B, A)
     nested = small["n_params"] < big["n_params"] and is_nested(small, big)
     test = None
-    if nested:
+    verdict = None
+    if any(math.isnan(m["loglik"]) for m in models):
+        pass
+    elif nested:
         s = max(2 * (big["loglik"] - small["loglik"]), 0.0)
         df = big["n_params"] - small["n_params"]
-        test = {"simple": small["name"], "complex": big["name"], "lr": s, "df": df, "p": stats.chi2.sf(s, df)}
+        test = {"simple": small["name"], "complex": big["name"], "lr": s, "df": df, "p": cf.chi2_sf(s, df)}
         if test["p"] < 0.05:
             verdict = f"P {fmt_p(test['p'])}，小於 0.05：較複雜的模型 {big['name']} 明顯比較好，多出來的參數有必要（§5.2）。"
         else:
             verdict = f"P {fmt_p(test['p'])}，不小於 0.05：沒有證據顯示較複雜的模型 {big['name']} 比較好，用較簡單的模型 {small['name']} 即可（§5.2）。"
     else:
         warns.append({"code": "NOT_NESTED", "message": "兩個模型不是巢狀（一個不是另一個的特例），不能用概似比檢定比較，只能看 AIC（越小越好，§5.1）。"})
-        verdict = None
-    best_aic = min(models, key=lambda m: m["aic"])["name"]
+    valid = [m for m in models if not math.isnan(m["aic"])]
+    best_aic = min(valid, key=lambda m: m["aic"])["name"] if len(valid) == 2 else None
 
     def desc(m):
         parts = [f"{v}（數值）" if v in m["numeric"] else f"{v}（類別）" for v in m["x"]]
@@ -846,7 +914,8 @@ def cmd_compare(a):
     if test:
         print(f"\n概似比檢定（{test['simple']} 是 {test['complex']} 的特例）：LR = {fmt(test['lr'], 2)}，df = {test['df']}，P {fmt_p(test['p'])}")
         print(f"結論：{verdict}")
-    print(f"AIC 較小的是模型 {best_aic}（AIC 兼顧配適度與參數個數，§5.1）。")
+    if best_aic:
+        print(f"AIC 較小的是模型 {best_aic}（AIC 兼顧配適度與參數個數，§5.1）。")
     if warns:
         print("\n注意事項")
         for w in warns:
@@ -937,7 +1006,8 @@ def report_section(r, folder):
             t = r["lr_test"]
             body += f"<p>概似比檢定（{t['simple']} 是 {t['complex']} 的特例）：LR = {_f(t['lr'], 2)}，df = {t['df']}，P {_pe(t['p'])}</p>"
             body += f"<p><b>結論：</b>{_html(r['verdict'])}</p>"
-        body += f"<p>AIC 較小的是模型 {r['best_aic']}。</p>"
+        if r.get("best_aic"):
+            body += f"<p>AIC 較小的是模型 {r['best_aic']}。</p>"
     else:
         return ""
     figs = "".join(_img(folder, p) for p in r.get("plots", []))
@@ -978,11 +1048,70 @@ def cmd_report(a):
         fh.write(html)
     print(f"報告已存到：{os.path.abspath(dest)}（共 {len(secs)} 個分析）")
 
+# ---------------------------------------------------------------- check：檢查執行環境，並用內附資料確認計算正確
+
+# 參考值：R 的 glm（logistic）、VGAM::vglm（baseline-category logit）、ordinal::clm（累積 logit），
+# 收斂標準都設到 1e-15（R 預設的收斂標準較寬，標準誤只準到約 1e-5）
+CHECK_REF = {
+    "crabs": {"beta": [-12.350817725597, 0.497230587226588], "se": [2.62873104756985, 0.101736074813784],
+              "deviance": 194.452663928765},
+    "alligators": {"beta": [[1.6177314900337, 5.69744417347593], [-0.110109047244321, -2.4654461266457]],
+                   "se": [[1.30727483744675, 1.79380849332486], [0.51708204061775, 0.899650263334737]],
+                   "loglik": -49.1706220797402},
+    "walc": {"theta": [-0.0866532499325013, 0.909784901363865, 1.88784069239872, 3.18633348719943],
+             "beta": [1.14010656231582], "se_theta": [0.0977366153468807, 0.103378139659472, 0.124002155289283, 0.17751915409664],
+             "se_beta": [0.150050695755103], "loglik": -926.130024464881},
+}
+
+def cmd_check(a):
+    import platform
+    print("【執行環境】")
+    print(f"- Python {platform.python_version()}")
+    print(f"- numpy {np.__version__}、pandas {pd.__version__}（必要）")
+    if HAVE_MPL:
+        print(f"- matplotlib {matplotlib.__version__}：可以畫圖" + ("（有中文字型）" if ZH else "（沒有中文字型，圖上用英文標籤）"))
+    else:
+        print("- matplotlib：沒有安裝 → 只算數字、不畫圖（不影響任何統計結果）")
+    print("- statsmodels、scipy：本 Skill 不需要；不需要網路、不安裝任何套件")
+    base = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
+    tol, ok_all = 1e-6, True
+    def report(name, diff, status):
+        nonlocal ok_all
+        ok = status == "ok" and diff < tol
+        ok_all &= ok
+        print(f"- {name}：{'通過' if ok else '不通過'}（和 R 的最大差距 {diff:.1e}，收斂狀態 {status}）")
+    print("\n【計算自我檢查】用 Skill 內附的資料，和 R 的結果比對（差距要小於 1e-6）")
+    d = pd.read_csv(os.path.join(base, "crabs.csv"))
+    X = np.column_stack([np.ones(len(d)), d["width"].astype(float)])
+    f = cf.logit_fit(d["y"].astype(float).values, X)
+    r = CHECK_REF["crabs"]
+    report("二元 logistic（馬蹄蟹 y ~ width）",
+           max(np.max(np.abs(f.params - r["beta"])), np.max(np.abs(f.se - r["se"])), abs(f.deviance - r["deviance"])), f.status)
+    d = pd.read_csv(os.path.join(base, "alligators.csv"))
+    order = ["O", "F", "I"]
+    yc = d["food"].map({k: i for i, k in enumerate(order)}).values
+    f = cf.mnlogit_fit(yc, np.column_stack([np.ones(len(d)), d["length"].astype(float)]), 3)
+    r = CHECK_REF["alligators"]
+    report("baseline-category logit（鱷魚 food ~ length，基準 O）",
+           max(np.max(np.abs(f.params - np.array(r["beta"]))), np.max(np.abs(f.se - np.array(r["se"]))), abs(f.llf - r["loglik"])), f.status)
+    d = pd.read_csv(os.path.join(base, "student_por.csv"))
+    f = cf.cumlogit_fit(d["Walc"].astype(int).values - 1, (d["sex"] == "M").astype(float).values[:, None], 5)
+    r = CHECK_REF["walc"]
+    report("累積 logit（高中生 Walc ~ sex）",
+           max(np.max(np.abs(f.theta - r["theta"])), np.max(np.abs(f.beta - r["beta"])), np.max(np.abs(f.se_theta - r["se_theta"])),
+               np.max(np.abs(f.se_beta - r["se_beta"])), abs(f.llf - r["loglik"])), f.status)
+    ty = np.array([0, 0, 0, 1, 1, 1.0])
+    f = cf.logit_fit(ty, np.column_stack([np.ones(6), np.arange(1, 7.0)]))
+    sep_ok = f.status == "separation" and bool(f.sep[1])
+    ok_all &= sep_ok
+    print(f"- 完全分離的偵測（x = 1–3 都失敗、4–6 都成功）：{'通過' if sep_ok else '不通過'}（狀態 {f.status}）")
+    print("\n" + ("全部通過：計算正確，可以開始分析。" if ok_all else "有項目不通過：請不要用這個環境分析，並把這段輸出截圖回報。"))
+
 # ---------------------------------------------------------------- 主程式
 
 def main():
     p = argparse.ArgumentParser(description="類別結果模型 Skill 的計算程式")
-    p.add_argument("cmd", choices=["tidy", "describe", "plot", "logistic", "multinomial", "ordinal", "compare", "report"])
+    p.add_argument("cmd", choices=["check", "tidy", "describe", "plot", "logistic", "multinomial", "ordinal", "compare", "report"])
     for opt in ("csv", "vars", "y", "x", "success", "numeric", "ref", "baseline", "levels", "out",
                 "type", "x2", "numeric2", "title", "summary", "file", "layout", "keep", "freq"):
         p.add_argument(f"--{opt}", action="append")
@@ -996,6 +1125,8 @@ def main():
         v = getattr(a, opt)
         if v is not None:
             setattr(a, opt, v[-1])
+    if a.cmd == "check":
+        return cmd_check(a)
     if a.cmd == "report":
         return cmd_report(a)
     if not a.csv:

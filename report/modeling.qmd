@@ -638,7 +638,8 @@ categorical-modeling/
 │   ├── textbook-methods.md     <- 課本細節：假設、公式、注意事項
 │   └── decision-tree.md        <- 選模型的決策樹、協助使用者判斷、配適後建議的比較
 ├── scripts/
-│   └── run_model.py            <- 整理資料格式＋實際計算（statsmodels）＋畫圖＋比較模型＋產生報告
+│   ├── run_model.py            <- 指令：整理資料格式、描述、畫圖、配適與比較模型、產生報告、環境檢查
+│   └── catfit.py               <- 模型配適：Newton-Raphson、分離偵測、卡方與常態分布（只用 numpy）
 ├── data/                       <- 範例資料（馬蹄蟹、鱷魚、高中生）
 └── decision-tree.png           <- 決策樹圖
 ```
@@ -651,7 +652,8 @@ categorical-modeling/
 | `methods.md` | 一頁速查：模型式、$H_0$、統計量、勝算比怎麼解釋、對應的指令 |
 | `textbook-methods.md` | 最深的一層：完整假設、估計與推論、模型檢查、模型比較、常見誤解，附 Agresti 節號 |
 | `decision-tree.md` | 幫 Claude 決定用哪個模型、還要問使用者哪些設定；使用者不確定時用例子協助判斷，並附上每個判斷的理論依據；配適後依警告代碼建議做哪些比較 |
-| `run_model.py` | 被執行的程式（Python）：整理資料格式、描述資料、畫圖、配適與比較模型、產生報告 |
+| `run_model.py` | 被執行的程式（Python）：整理資料格式、描述資料、畫圖、配適與比較模型、產生報告；`check` 指令先檢查執行環境 |
+| `catfit.py` | 自己寫的配適函數（二元 logistic、baseline-category logit、累積 logit），只需要 numpy，**不需要網路、不需要安裝套件** |
 
 ## 怎麼使用？
 
@@ -851,6 +853,16 @@ flowchart LR
 | 只問一個概念或改一個設定，也要從頭走一遍 | 只有一種完整流程 | 新增三種工作模式：完整分析、只問概念、接續分析 |
 | 資料必須是「每個觀察對象一列」，次數表、交叉表或每人一欄的資料不能直接用 | 分析指令只讀標準格式 | 新增 `tidy` 指令，自動整理成每個觀察對象一列；用課本 Polviews 驗證結果與 R 相同 |
 | 流程圖太長、字太小 | 選模型和分析流程畫在同一條直線上 | 拆成「A 選模型」「B 分析流程」兩段並排，每一步附上課本節號 |
+| 同學在 claude.ai 網頁版實測時跑不動：環境沒有 statsmodels，也不能從網路安裝 | 程式依賴 statsmodels、scipy | 改成自己寫的 Newton-Raphson（`catfit.py`），只用 numpy、pandas；新增 `check` 自我檢查；規定 Claude 不可以自己臨時寫迴歸程式 |
+
+::: {.callout-note}
+## 改寫計算程式後的比對（不需要 statsmodels）
+三個模型都改成自己寫的 Newton-Raphson 後，用課本例題（馬蹄蟹、鱷魚、政治意識形態）和示範資料（三次實測的題目），
+把每個輸出（係數、標準誤、Wald 檢定、profile likelihood／Wald 信賴區間、deviance、概似比檢定、AIC、預測機率、AUC、比例勝算檢定）
+和 statsmodels、R（`glm`、`VGAM::vglm`、`ordinal::clm`、`pROC`）比對：**146 項、1571 個數字，差距都小於 1e-6**。
+比對時刻意擋掉 statsmodels、scipy，證明 Skill 執行時不需要它們；完全分離時會輸出 `Inf`／`NA` 並警告，不會給看起來正常的數字。
+比對程式與結果在 GitHub repo 的 `tests/`。
+:::
 
 完整的製作過程（每個檔案怎麼寫、怎麼測試）見 `make-skill-tutorial.html`。
 
@@ -1138,7 +1150,7 @@ p2_numbers_q1 <- function(s) {
     num_row("LR 檢定：sex", sk_lr(s, "sex"), vget(v$q1$LR, "sex")),
     num_row("ROC 曲線下面積", if (quant && !is.null(s)) num0(s$auc) else NA, v$q1$auc))
 }
-# q2：累積 logit。Skill（statsmodels）與驗證程式（MASS::polr）的勝算比都是「落在較高類別」的方向。
+# q2：累積 logit。Skill 與驗證程式（MASS::polr）的勝算比都是「落在較高類別」的方向。
 p2_numbers_q2 <- function(s) {
   rbind(
     num_row("sex = M：落在較高類別的勝算比", sk_coef(s, "sexM", "or_higher"), v$q2$odds_ratio_higher_sexM),
@@ -1237,7 +1249,7 @@ if (n3_cmp > 0) {
 ::: {.callout-tip}
 ## 實測結論
 - **模型判斷正確**：三題分別選了二元 logistic、累積 logit、baseline-category logit，和我依課本做的判斷完全一致；每題都先確認資料是否獨立、成功類別、數字代碼當數值或類別、類別順序、基準類別，才推薦模型
-- **數字正確**：Skill 用 Python（statsmodels）計算，和我用 R 獨立重算的結果全部一致（第一次 21 項、第二次模型比較 6 項、重新配適 `r n3_cmp` 項）
+- **數字正確**：Skill 用 Python 計算，和我用 R 獨立重算的結果全部一致（第一次 21 項、第二次模型比較 6 項、重新配適 `r n3_cmp` 項）
 - **解釋到位**：主動提醒 pass 由期末成績換算，G1–G3 不能當解釋變數；第 2 題比例勝算假設不成立時，說明單一勝算比只代表平均效果，沒有把結果壓成兩類
 - **比人為判斷多走一步**：我原本認為被當次數當數值比較好；Skill 先提醒等距假設可能不成立，再用模型比較證實當類別明顯較好；改用類別模型後看出效果集中在「有沒有被當過」
 - **實測帶來的改進**：看圖估讀數字、回覆次數太多、沒辦法檢查等距假設、重複選項被忽略，都是實測時發現、修改後再測一次確認的
@@ -1272,7 +1284,7 @@ if (!is.null(tab_cat)) {
 ```
 
 - 實測在新的 Claude 對話中進行，只上傳 Skill 和資料，看不到我的判斷和驗證結果
-- 驗證程式用課本示範的 R 指令（`glm`、`anova`、`MASS`、`ordinal`、`nnet`），Skill 用 Python 的 statsmodels：兩邊是不同語言、不同套件，各自獨立計算
+- 驗證程式用課本示範的 R 指令（`glm`、`anova`、`MASS`、`ordinal`、`nnet`），Skill 用 Python：兩邊是不同語言、不同程式，各自獨立計算
 - 資料結構與變數型態是 Skill 在對話中和使用者確認的，詳見對話紀錄（`skill-test/round1/transcript.md`、`skill-test/round2/transcript.md`、`skill-test/round3/transcript.md`）
 :::
 
